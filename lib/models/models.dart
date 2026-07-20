@@ -371,6 +371,7 @@ class UnrecognizedTransaction {
   final double amount;
   final String? accountLast4;
   final String? toAccountLast4;
+  final String? type;
   final String rawSms;
   final DateTime date;
 
@@ -379,6 +380,7 @@ class UnrecognizedTransaction {
     required this.amount,
     this.accountLast4,
     this.toAccountLast4,
+    this.type,
     required this.rawSms,
     required this.date,
   });
@@ -389,6 +391,7 @@ class UnrecognizedTransaction {
       'amount': amount,
       'accountLast4': accountLast4,
       'toAccountLast4': toAccountLast4,
+      'type': type,
       'rawSms': rawSms,
       'date': date.toIso8601String(),
     };
@@ -400,6 +403,7 @@ class UnrecognizedTransaction {
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       accountLast4: json['accountLast4'],
       toAccountLast4: json['toAccountLast4'],
+      type: json['type'],
       rawSms: json['rawSms'] ?? '',
       date: json['date'] != null ? DateTime.parse(json['date']) : DateTime.now(),
     );

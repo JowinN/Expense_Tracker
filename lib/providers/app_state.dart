@@ -8,7 +8,7 @@ import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/database_service.dart';
 
-class AppState extends ChangeNotifier {
+class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final AuthService _authService = FirebaseAuthService();
   final DatabaseService _databaseService = FirestoreDatabaseService();
 
@@ -27,10 +27,22 @@ class AppState extends ChangeNotifier {
   static const _channel = MethodChannel('com.family.spendwise/sms');
 
   AppState() {
+    WidgetsBinding.instance.addObserver(this);
     _initAuthStream();
     _initMethodChannel();
     _loadUnrecognizedTransactions();
     Future.delayed(const Duration(seconds: 1), () => checkPendingTransaction());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Re-read disk file in case the SMS receiver wrote a new transaction
+      // while the app was in the background and the user dismissed the notification.
+      _loadUnrecognizedTransactions();
+      // Also check for any pending transaction passed via notification intent.
+      checkPendingTransaction();
+    }
   }
 
   // Getters
@@ -479,6 +491,7 @@ class AppState extends ChangeNotifier {
           amount: (map['amount'] as num).toDouble(),
           accountLast4: map['accountLast4'],
           toAccountLast4: map['toAccountLast4'],
+          type: map['type'],
           rawSms: map['rawSms'] ?? '',
           date: DateTime.tryParse(map['date'] ?? '') ?? DateTime.now(),
         );
@@ -497,6 +510,7 @@ class AppState extends ChangeNotifier {
           amount: (map['amount'] as num).toDouble(),
           accountLast4: map['accountLast4'],
           toAccountLast4: map['toAccountLast4'],
+          type: map['type'],
           rawSms: map['rawSms'] ?? '',
           date: DateTime.tryParse(map['date'] ?? '') ?? DateTime.now(),
         );
@@ -543,6 +557,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSubscription?.cancel();
     _transactionSubscription?.cancel();
     super.dispose();

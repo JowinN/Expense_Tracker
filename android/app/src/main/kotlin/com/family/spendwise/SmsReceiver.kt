@@ -51,19 +51,25 @@ class SmsReceiver : BroadcastReceiver() {
                       body.contains("paid", ignoreCase = true) || 
                       body.contains("txn of", ignoreCase = true)
 
+        val isCredit = body.contains("credited", ignoreCase = true) ||
+                       body.contains("received", ignoreCase = true) ||
+                       body.contains("salary", ignoreCase = true)
+
         val isOtp = body.contains("otp", ignoreCase = true) || 
                     body.contains("one time password", ignoreCase = true) || 
                     body.contains("code is", ignoreCase = true)
 
-        if (isDebit && !isOtp) {
+        if ((isDebit || isCredit) && !isOtp) {
+            val type = if (isCredit) "income" else "expense"
+
             // Extract amount using regex: Rs. 500 or Rs 500 or INR 500
             val amountRegex = Regex("""(?:Rs\.?|INR)\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE)
             val amountMatch = amountRegex.find(body)
             val amountStr = amountMatch?.groups?.get(1)?.value?.replace(",", "")
             val amount = amountStr?.toDoubleOrNull() ?: return
 
-            // Extract account/card numbers
-            val accRegex = Regex("""(?:A/c|Acct|account|card|to|credited|ending)\s*\D*(\d{4})""", RegexOption.IGNORE_CASE)
+            // Extract account/card numbers (using negative lookarounds to match exactly 4 digits)
+            val accRegex = Regex("""(?:A/c|Acct|account|card|to|credited|ending)\s*\D*(?<!\d)(\d{4})(?!\d)""", RegexOption.IGNORE_CASE)
             val accMatches = accRegex.findAll(body).toList()
             val validAccs = accMatches.mapNotNull { it.groups[1]?.value }.filter { it != amountStr }
             val accountLast4 = if (validAccs.isNotEmpty()) validAccs[0] else null
@@ -76,10 +82,10 @@ class SmsReceiver : BroadcastReceiver() {
             val dateStr = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US).format(Date())
 
             // Save unrecognized transaction to json file in filesDir
-            saveUnrecognizedTransaction(context, txId, amount, accountLast4, toAccountLast4, body, dateStr)
+            saveUnrecognizedTransaction(context, txId, amount, accountLast4, toAccountLast4, type, body, dateStr)
 
             // Trigger dynamic local notification
-            showNotification(context, txId, amount, accountLast4, toAccountLast4, body, dateStr)
+            showNotification(context, txId, amount, accountLast4, toAccountLast4, type, body, dateStr)
         }
     }
 
@@ -89,15 +95,48 @@ class SmsReceiver : BroadcastReceiver() {
         amount: Double,
         accountLast4: String?,
         toAccountLast4: String?,
+        type: String,
         rawSms: String,
         date: String
     ) {
         try {
-            val file = File(context.filesDir, "unrecognized_transactions.json")
+            val oldFile = File(context.filesDir, "unrecognized_transactions.json")
+            val appFlutterDir = File(context.filesDir.parentFile, "app_flutter")
+            if (!appFlutterDir.exists()) {
+                appFlutterDir.mkdirs()
+            }
+            val file = File(appFlutterDir, "unrecognized_transactions.json")
             val jsonArray = if (file.exists()) {
                 JSONArray(file.readText())
             } else {
                 JSONArray()
+            }
+
+            // Migrate old entries if old file exists
+            if (oldFile.exists()) {
+                try {
+                    val oldArray = JSONArray(oldFile.readText())
+                    val existingIds = HashSet<String>()
+                    for (i in 0 until jsonArray.length()) {
+                        val obj = jsonArray.optJSONObject(i)
+                        val idVal = obj?.optString("id")
+                        if (idVal != null) {
+                            existingIds.add(idVal)
+                        }
+                    }
+                    for (i in 0 until oldArray.length()) {
+                        val obj = oldArray.optJSONObject(i)
+                        if (obj != null) {
+                            val idVal = obj.optString("id")
+                            if (idVal != null && !existingIds.contains(idVal)) {
+                                jsonArray.put(obj)
+                            }
+                        }
+                    }
+                    oldFile.delete()
+                } catch (migrationEx: Exception) {
+                    migrationEx.printStackTrace()
+                }
             }
 
             val newTx = JSONObject()
@@ -105,6 +144,7 @@ class SmsReceiver : BroadcastReceiver() {
             newTx.put("amount", amount)
             newTx.put("accountLast4", accountLast4 ?: JSONObject.NULL)
             newTx.put("toAccountLast4", toAccountLast4 ?: JSONObject.NULL)
+            newTx.put("type", type)
             newTx.put("rawSms", rawSms)
             newTx.put("date", date)
 
@@ -121,6 +161,7 @@ class SmsReceiver : BroadcastReceiver() {
         amount: Double,
         accountLast4: String?,
         toAccountLast4: String?,
+        type: String,
         rawSms: String,
         date: String
     ) {
@@ -147,6 +188,7 @@ class SmsReceiver : BroadcastReceiver() {
             putExtra("amount", amount)
             putExtra("accountLast4", accountLast4)
             putExtra("toAccountLast4", toAccountLast4)
+            putExtra("type", type)
             putExtra("rawSms", rawSms)
             putExtra("date", date)
             putExtra("isSmsAlert", true)
@@ -168,10 +210,11 @@ class SmsReceiver : BroadcastReceiver() {
         }
 
         val contentTitle = if (toAccountLast4 != null) "New Transfer Detected" else "New Transaction Detected"
+        val actionText = if (type == "income") "received" else "spent"
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setContentTitle(contentTitle)
-            .setContentText("₹${String.format(Locale.US, "%.2f", amount)} spent $accountText. Tap to categorize.")
+            .setContentText("₹${String.format(Locale.US, "%.2f", amount)} $actionText $accountText. Tap to categorize.")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)

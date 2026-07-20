@@ -782,14 +782,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               final isKnownTransfer = matchedAccount != null && matchedToAccount != null;
 
+              final isIncome = item.type == 'income';
+              final cardColor = isDark 
+                  ? const Color(0xFF1E293B) 
+                  : (isIncome ? Colors.green.shade50 : Colors.orange.shade50);
+              final borderColor = isIncome 
+                  ? Colors.green.withAlpha((0.3 * 255).toInt())
+                  : Colors.orange.withAlpha((0.3 * 255).toInt());
+
               return Container(
                 width: 280,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E293B) : Colors.orange.shade50,
+                  color: cardColor,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: Colors.orange.withAlpha((0.3 * 255).toInt()),
+                    color: borderColor,
                     width: 1.5,
                   ),
                 ),
@@ -804,7 +812,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: isDark ? Colors.orange.shade300 : Colors.orange.shade900,
+                            color: isDark 
+                                ? (isIncome ? Colors.green.shade300 : Colors.orange.shade300) 
+                                : (isIncome ? Colors.green.shade900 : Colors.orange.shade900),
                           ),
                         ),
                         Container(
@@ -868,7 +878,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         const SizedBox(width: 8),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
+                            backgroundColor: isIncome ? Colors.green : Colors.orange,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                             minimumSize: Size.zero,
@@ -897,7 +907,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 builder: (context) => AddTransactionSheet(
                                   prefilledAmount: item.amount,
                                   prefilledAccountId: matchedAccount?.id,
-                                  prefilledTitle: "Debit Alert",
+                                  prefilledTitle: isIncome ? "Credit Alert" : "Debit Alert",
+                                  prefilledType: isIncome ? TransactionType.income : TransactionType.expense,
                                   unrecognizedTxIdToDelete: item.id,
                                 ),
                               );

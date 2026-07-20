@@ -674,6 +674,7 @@ class AddTransactionSheet extends StatefulWidget {
   final double? prefilledAmount;
   final String? prefilledAccountId;
   final String? prefilledTitle;
+  final TransactionType? prefilledType;
   final String? unrecognizedTxIdToDelete;
 
   const AddTransactionSheet({
@@ -682,6 +683,7 @@ class AddTransactionSheet extends StatefulWidget {
     this.prefilledAmount,
     this.prefilledAccountId,
     this.prefilledTitle,
+    this.prefilledType,
     this.unrecognizedTxIdToDelete,
   });
 
@@ -705,7 +707,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   void initState() {
     super.initState();
     final tx = widget.editingTransaction;
-    _type = tx?.type ?? TransactionType.expense;
+    _type = tx?.type ?? widget.prefilledType ?? TransactionType.expense;
     _titleController = TextEditingController(text: tx?.title ?? widget.prefilledTitle ?? '');
     _amountController = TextEditingController(
       text: tx != null 
