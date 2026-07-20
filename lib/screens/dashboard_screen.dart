@@ -8,6 +8,7 @@ import '../models/models.dart';
 import '../theme/theme.dart';
 
 import 'transactions_screen.dart'; // import to reuse AddTransactionSheet
+import 'transfers_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -757,7 +758,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             itemBuilder: (context, index) {
               final item = list[index];
               
-              // Try to find a matching account
+              // Try to find matching source account
               AccountItem? matchedAccount;
               if (item.accountLast4 != null && item.accountLast4!.isNotEmpty) {
                 for (var acc in appState.accounts) {
@@ -767,6 +768,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   }
                 }
               }
+
+              // Try to find matching destination account
+              AccountItem? matchedToAccount;
+              if (item.toAccountLast4 != null && item.toAccountLast4!.isNotEmpty) {
+                for (var acc in appState.accounts) {
+                  if (acc.cardLast4.contains(item.toAccountLast4)) {
+                    matchedToAccount = acc;
+                    break;
+                  }
+                }
+              }
+
+              final isKnownTransfer = matchedAccount != null && matchedToAccount != null;
 
               return Container(
                 width: 280,
@@ -796,18 +810,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: matchedAccount != null 
-                              ? Colors.green.withAlpha((0.2 * 255).toInt())
-                              : Colors.grey.withAlpha((0.2 * 255).toInt()),
+                            color: isKnownTransfer 
+                              ? Colors.blue.withAlpha((0.2 * 255).toInt())
+                              : (matchedAccount != null 
+                                  ? Colors.green.withAlpha((0.2 * 255).toInt())
+                                  : Colors.grey.withAlpha((0.2 * 255).toInt())),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text(
-                            matchedAccount != null ? matchedAccount.name : "Unknown A/c",
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: matchedAccount != null ? Colors.green : Colors.grey,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isKnownTransfer) ...[
+                                Icon(Icons.swap_horiz, size: 10, color: isDark ? Colors.blue.shade300 : Colors.blue.shade800),
+                                const SizedBox(width: 4),
+                                Text(
+                                  "${matchedAccount.name} ➔ ${matchedToAccount.name}",
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                                  ),
+                                ),
+                              ] else ...[
+                                Text(
+                                  matchedAccount != null ? matchedAccount.name : "Unknown A/c",
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: matchedAccount != null ? Colors.green : Colors.grey,
+                                  ),
+                                ),
+                              ]
+                            ],
                           ),
                         ),
                       ],
@@ -843,17 +877,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ),
                           onPressed: () {
-                            showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              backgroundColor: Colors.transparent,
-                              builder: (context) => AddTransactionSheet(
-                                prefilledAmount: item.amount,
-                                prefilledAccountId: matchedAccount?.id,
-                                prefilledTitle: "Debit Alert",
-                                unrecognizedTxIdToDelete: item.id,
-                              ),
-                            );
+                            if (isKnownTransfer) {
+                              showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                backgroundColor: Colors.transparent,
+                                builder: (context) => AddTransferSheet(
+                                  prefilledAmount: item.amount,
+                                  prefilledFromAccountId: matchedAccount!.id,
+                                  prefilledToAccountId: matchedToAccount!.id,
+                                  unrecognizedTxIdToDelete: item.id,
+                                ),
+                              );
+                            } else {
+                              showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                backgroundColor: Colors.transparent,
+                                builder: (context) => AddTransactionSheet(
+                                  prefilledAmount: item.amount,
+                                  prefilledAccountId: matchedAccount?.id,
+                                  prefilledTitle: "Debit Alert",
+                                  unrecognizedTxIdToDelete: item.id,
+                                ),
+                              );
+                            }
                           },
                           child: const Text("Add", style: TextStyle(fontSize: 12)),
                         ),

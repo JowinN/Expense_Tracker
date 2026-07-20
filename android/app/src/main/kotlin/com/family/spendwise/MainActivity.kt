@@ -34,6 +34,7 @@ class MainActivity : FlutterActivity() {
                 "id" to intent.getStringExtra("id"),
                 "amount" to intent.getDoubleExtra("amount", 0.0),
                 "accountLast4" to intent.getStringExtra("accountLast4"),
+                "toAccountLast4" to intent.getStringExtra("toAccountLast4"),
                 "rawSms" to intent.getStringExtra("rawSms"),
                 "date" to intent.getStringExtra("date")
             )

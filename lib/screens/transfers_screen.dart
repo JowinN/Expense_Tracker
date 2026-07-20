@@ -351,7 +351,18 @@ class _TransfersScreenState extends State<TransfersScreen> {
 }
 
 class AddTransferSheet extends StatefulWidget {
-  const AddTransferSheet({super.key});
+  final double? prefilledAmount;
+  final String? prefilledFromAccountId;
+  final String? prefilledToAccountId;
+  final String? unrecognizedTxIdToDelete;
+
+  const AddTransferSheet({
+    super.key,
+    this.prefilledAmount,
+    this.prefilledFromAccountId,
+    this.prefilledToAccountId,
+    this.unrecognizedTxIdToDelete,
+  });
 
   @override
   State<AddTransferSheet> createState() => _AddTransferSheetState();
@@ -368,9 +379,13 @@ class _AddTransferSheetState extends State<AddTransferSheet> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController();
-    _amountController = TextEditingController();
+    _titleController = TextEditingController(text: "Internal Transfer");
+    _amountController = TextEditingController(
+      text: widget.prefilledAmount != null ? widget.prefilledAmount.toString() : '',
+    );
     _selectedDate = DateTime.now();
+    _fromAccountId = widget.prefilledFromAccountId;
+    _toAccountId = widget.prefilledToAccountId;
   }
 
   @override
@@ -402,6 +417,9 @@ class _AddTransferSheetState extends State<AddTransferSheet> {
     final toAccountId = _toAccountId!;
 
     await appState.addTransfer(title, amount, _selectedDate, fromAccountId, toAccountId);
+    if (widget.unrecognizedTxIdToDelete != null) {
+      await appState.deleteUnrecognizedTransaction(widget.unrecognizedTxIdToDelete!);
+    }
 
     if (mounted) Navigator.pop(context);
   }

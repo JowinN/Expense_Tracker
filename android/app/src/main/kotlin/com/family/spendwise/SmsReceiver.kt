@@ -62,19 +62,24 @@ class SmsReceiver : BroadcastReceiver() {
             val amountStr = amountMatch?.groups?.get(1)?.value?.replace(",", "")
             val amount = amountStr?.toDoubleOrNull() ?: return
 
-            // Extract last 4 digits of Card or Account number
-            val accRegex = Regex("""(?:A/c|Acct|account|card ending in|card\s*xx)\s*\D*(\d{4})""", RegexOption.IGNORE_CASE)
-            val accMatch = accRegex.find(body)
-            val accountLast4 = accMatch?.groups?.get(1)?.value
+            // Extract account/card numbers
+            val accRegex = Regex("""(?:A/c|Acct|account|card|to|credited|ending)\s*\D*(\d{4})""", RegexOption.IGNORE_CASE)
+            val accMatches = accRegex.findAll(body).toList()
+            val validAccs = accMatches.mapNotNull { it.groups[1]?.value }.filter { it != amountStr }
+            val accountLast4 = if (validAccs.isNotEmpty()) validAccs[0] else null
+            val toAccountLast4 = if (validAccs.size > 1) {
+                val secVal = validAccs[1]
+                if (secVal != accountLast4) secVal else null
+            } else null
 
             val txId = UUID.randomUUID().toString()
             val dateStr = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US).format(Date())
 
             // Save unrecognized transaction to json file in filesDir
-            saveUnrecognizedTransaction(context, txId, amount, accountLast4, body, dateStr)
+            saveUnrecognizedTransaction(context, txId, amount, accountLast4, toAccountLast4, body, dateStr)
 
             // Trigger dynamic local notification
-            showNotification(context, txId, amount, accountLast4, body, dateStr)
+            showNotification(context, txId, amount, accountLast4, toAccountLast4, body, dateStr)
         }
     }
 
@@ -83,6 +88,7 @@ class SmsReceiver : BroadcastReceiver() {
         id: String,
         amount: Double,
         accountLast4: String?,
+        toAccountLast4: String?,
         rawSms: String,
         date: String
     ) {
@@ -98,6 +104,7 @@ class SmsReceiver : BroadcastReceiver() {
             newTx.put("id", id)
             newTx.put("amount", amount)
             newTx.put("accountLast4", accountLast4 ?: JSONObject.NULL)
+            newTx.put("toAccountLast4", toAccountLast4 ?: JSONObject.NULL)
             newTx.put("rawSms", rawSms)
             newTx.put("date", date)
 
@@ -113,6 +120,7 @@ class SmsReceiver : BroadcastReceiver() {
         id: String,
         amount: Double,
         accountLast4: String?,
+        toAccountLast4: String?,
         rawSms: String,
         date: String
     ) {
@@ -138,6 +146,7 @@ class SmsReceiver : BroadcastReceiver() {
             putExtra("id", id)
             putExtra("amount", amount)
             putExtra("accountLast4", accountLast4)
+            putExtra("toAccountLast4", toAccountLast4)
             putExtra("rawSms", rawSms)
             putExtra("date", date)
             putExtra("isSmsAlert", true)
@@ -150,9 +159,18 @@ class SmsReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val accountText = if (accountLast4 != null) "from Account ending $accountLast4" else ""
+        val accountText = if (toAccountLast4 != null && accountLast4 != null) {
+            "from Account ending $accountLast4 to $toAccountLast4"
+        } else if (accountLast4 != null) {
+            "from Account ending $accountLast4"
+        } else {
+            ""
+        }
+
+        val contentTitle = if (toAccountLast4 != null) "New Transfer Detected" else "New Transaction Detected"
+
         val notification = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("New Transaction Detected")
+            .setContentTitle(contentTitle)
             .setContentText("₹${String.format(Locale.US, "%.2f", amount)} spent $accountText. Tap to categorize.")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setAutoCancel(true)

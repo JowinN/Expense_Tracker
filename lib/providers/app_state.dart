@@ -478,6 +478,7 @@ class AppState extends ChangeNotifier {
           id: map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
           amount: (map['amount'] as num).toDouble(),
           accountLast4: map['accountLast4'],
+          toAccountLast4: map['toAccountLast4'],
           rawSms: map['rawSms'] ?? '',
           date: DateTime.tryParse(map['date'] ?? '') ?? DateTime.now(),
         );
@@ -495,6 +496,7 @@ class AppState extends ChangeNotifier {
           id: map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
           amount: (map['amount'] as num).toDouble(),
           accountLast4: map['accountLast4'],
+          toAccountLast4: map['toAccountLast4'],
           rawSms: map['rawSms'] ?? '',
           date: DateTime.tryParse(map['date'] ?? '') ?? DateTime.now(),
         );
