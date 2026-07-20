@@ -831,8 +831,11 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
       _selectedCategoryId = typeCategories.first.id;
     }
 
-    if (_selectedAccountId == null && appState.accounts.isNotEmpty) {
-      _selectedAccountId = appState.accounts.first.id;
+    final userAccounts = appState.myAccounts.isNotEmpty ? appState.myAccounts : appState.accounts;
+    if (_selectedAccountId == null && userAccounts.isNotEmpty) {
+      _selectedAccountId = userAccounts.first.id;
+    } else if (_selectedAccountId != null && !userAccounts.any((a) => a.id == _selectedAccountId)) {
+      if (userAccounts.isNotEmpty) _selectedAccountId = userAccounts.first.id;
     }
 
     final creditCards = appState.accounts.where((a) => a.type == AccountType.creditCard).toList();
@@ -1007,7 +1010,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                   dropdownColor: isDark ? AppTheme.darkSurface : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   selectedItemBuilder: (BuildContext context) {
-                    return appState.accounts.map((a) {
+                    return userAccounts.map((a) {
                       final balance = appState.getAccountBalance(a);
                       final isCreditCard = a.type == AccountType.creditCard;
                       final double displayBalance = isCreditCard
@@ -1022,7 +1025,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                       );
                     }).toList();
                   },
-                  items: appState.accounts.map((a) {
+                  items: userAccounts.map((a) {
                     final balance = appState.getAccountBalance(a);
                     final isCreditCard = a.type == AccountType.creditCard;
                     final double displayBalance = isCreditCard

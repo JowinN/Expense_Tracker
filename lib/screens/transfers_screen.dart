@@ -463,11 +463,15 @@ class _AddTransferSheetState extends State<AddTransferSheet> {
     final currencyFormatter = NumberFormat.currency(symbol: '₹', decimalDigits: 0);
 
     final accounts = appState.accounts;
+    final fromAccounts = appState.myAccounts.isNotEmpty ? appState.myAccounts : appState.accounts;
 
     // Set intelligent default values for dropdowns if null
-    if (_fromAccountId == null && accounts.isNotEmpty) {
-      _fromAccountId = accounts.first.id;
+    if (_fromAccountId == null && fromAccounts.isNotEmpty) {
+      _fromAccountId = fromAccounts.first.id;
+    } else if (_fromAccountId != null && !fromAccounts.any((a) => a.id == _fromAccountId)) {
+      if (fromAccounts.isNotEmpty) _fromAccountId = fromAccounts.first.id;
     }
+
     // Select a default target account that is different from source
     if (_toAccountId == null && accounts.length > 1) {
       _toAccountId = accounts.firstWhere((a) => a.id != _fromAccountId).id;
@@ -583,7 +587,7 @@ class _AddTransferSheetState extends State<AddTransferSheet> {
               const SizedBox(height: 16),
 
               // Source Account Dropdown
-              if (accounts.isEmpty)
+              if (fromAccounts.isEmpty)
                 const Text("Add an account first to perform transfers.", style: TextStyle(color: AppTheme.expenseColor))
               else ...[
                 DropdownButtonFormField<String>(
@@ -592,7 +596,7 @@ class _AddTransferSheetState extends State<AddTransferSheet> {
                   dropdownColor: isDark ? AppTheme.darkSurface : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   selectedItemBuilder: (BuildContext context) {
-                    return accounts.map((acc) {
+                    return fromAccounts.map((acc) {
                       final balance = appState.getAccountBalance(acc);
                       final isCreditCard = acc.type == AccountType.creditCard;
                       final double displayBalance = isCreditCard
@@ -607,7 +611,7 @@ class _AddTransferSheetState extends State<AddTransferSheet> {
                       );
                     }).toList();
                   },
-                  items: accounts.map((acc) {
+                  items: fromAccounts.map((acc) {
                     final balance = appState.getAccountBalance(acc);
                     final isCreditCard = acc.type == AccountType.creditCard;
                     final double displayBalance = isCreditCard

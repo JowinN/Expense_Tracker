@@ -52,6 +52,15 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   List<TransactionItem> get transactions => _transactions;
   List<CategoryItem> get categories => _categories;
   List<AccountItem> get accounts => _accounts;
+  List<AccountItem> get myAccounts {
+    if (_currentUser == null) return _accounts;
+    return _accounts.where((acc) {
+      if (acc.userEmail != null && acc.userEmail!.trim().isNotEmpty) {
+        return acc.userEmail!.trim().toLowerCase() == _currentUser!.email.trim().toLowerCase();
+      }
+      return acc.creatorId == _currentUser!.id;
+    }).toList();
+  }
   List<UnrecognizedTransaction> get unrecognizedTransactions => _unrecognizedTransactions;
   ThemeMode get themeMode => _themeMode;
   bool get isLoading => _isLoading;
@@ -321,7 +330,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // Database Actions - Accounts
-  Future<void> addAccount(String name, AccountType type, double initialBalance, {double? limit, String? colorHex, List<String> cardLast4 = const []}) async {
+  Future<void> addAccount(String name, AccountType type, double initialBalance, {double? limit, String? userEmail, String? colorHex, List<String> cardLast4 = const []}) async {
     if (_currentUser == null) return;
     final newAccount = AccountItem(
       id: 'acc_${DateTime.now().microsecondsSinceEpoch}',
@@ -330,6 +339,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       initialBalance: initialBalance,
       limit: limit,
       creatorId: _currentUser!.id,
+      userEmail: (userEmail != null && userEmail.trim().isNotEmpty) ? userEmail.trim() : _currentUser!.email,
       colorHex: colorHex,
       orderIndex: _accounts.length,
       cardLast4: cardLast4,
@@ -521,10 +531,34 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _loadUnrecognizedTransactions() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/unrecognized_transactions.json');
-      if (await file.exists()) {
-        final contents = await file.readAsString();
+      final docsDir = await getApplicationDocumentsDirectory();
+      final newFile = File('${docsDir.path}/unrecognized_transactions.json');
+
+      // One-time migration: recover any SMS transactions saved to the old path
+      // (context.filesDir = getApplicationSupportDirectory on Android) before the
+      // file-path fix was deployed. Merge them into the correct path and delete old file.
+      if (Platform.isAndroid) {
+        try {
+          final supportDir = await getApplicationSupportDirectory();
+          final oldFile = File('${supportDir.path}/unrecognized_transactions.json');
+          if (await oldFile.exists()) {
+            final oldList = jsonDecode(await oldFile.readAsString()) as List<dynamic>;
+            List<dynamic> newList = [];
+            if (await newFile.exists()) {
+              newList = jsonDecode(await newFile.readAsString()) as List<dynamic>;
+            }
+            final existingIds = newList.map((e) => e['id']).toSet();
+            for (final item in oldList) {
+              if (!existingIds.contains(item['id'])) newList.add(item);
+            }
+            await newFile.writeAsString(jsonEncode(newList));
+            await oldFile.delete();
+          }
+        } catch (_) {}
+      }
+
+      if (await newFile.exists()) {
+        final contents = await newFile.readAsString();
         final list = jsonDecode(contents) as List<dynamic>;
         _unrecognizedTransactions = list.map((item) => UnrecognizedTransaction.fromJson(item)).toList();
       } else {

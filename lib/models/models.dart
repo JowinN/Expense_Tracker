@@ -45,6 +45,7 @@ class AccountItem {
   final double initialBalance;
   final double? limit; // Total limit for credit card
   final String creatorId;
+  final String? userEmail; // Linked user email address
   final String? colorHex;
   final int orderIndex;
   final List<String> cardLast4;
@@ -56,6 +57,7 @@ class AccountItem {
     required this.initialBalance,
     this.limit,
     required this.creatorId,
+    this.userEmail,
     this.colorHex,
     this.orderIndex = 0,
     this.cardLast4 = const [],
@@ -68,6 +70,7 @@ class AccountItem {
     double? initialBalance,
     double? limit,
     String? creatorId,
+    String? userEmail,
     String? colorHex,
     int? orderIndex,
     List<String>? cardLast4,
@@ -79,6 +82,7 @@ class AccountItem {
       initialBalance: initialBalance ?? this.initialBalance,
       limit: limit ?? this.limit,
       creatorId: creatorId ?? this.creatorId,
+      userEmail: userEmail ?? this.userEmail,
       colorHex: colorHex ?? this.colorHex,
       orderIndex: orderIndex ?? this.orderIndex,
       cardLast4: cardLast4 ?? this.cardLast4,
@@ -93,6 +97,7 @@ class AccountItem {
       'initialBalance': initialBalance,
       'limit': limit,
       'creatorId': creatorId,
+      'userEmail': userEmail,
       'colorHex': colorHex,
       'orderIndex': orderIndex,
       'cardLast4': cardLast4,
@@ -107,6 +112,7 @@ class AccountItem {
       initialBalance: (json['initialBalance'] as num?)?.toDouble() ?? 0.0,
       limit: json['limit'] != null ? (json['limit'] as num).toDouble() : null,
       creatorId: json['creatorId'] ?? '',
+      userEmail: json['userEmail'],
       colorHex: json['colorHex'],
       orderIndex: json['orderIndex'] ?? 0,
       cardLast4: json['cardLast4'] != null ? List<String>.from(json['cardLast4']) : const [],

@@ -128,7 +128,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 12),
 
             // Accounts List Card
-            if (appState.accounts.isEmpty)
+            if (appState.myAccounts.isEmpty)
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
@@ -157,12 +157,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ReorderableListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: appState.accounts.length,
+                        itemCount: appState.myAccounts.length,
                         onReorder: (oldIndex, newIndex) async {
                           if (newIndex > oldIndex) {
                             newIndex -= 1;
                           }
-                          final newList = List<AccountItem>.from(appState.accounts);
+                          final newList = List<AccountItem>.from(appState.myAccounts);
                           final item = newList.removeAt(oldIndex);
                           newList.insert(newIndex, item);
                           await appState.updateAccountsOrder(newList);
@@ -176,7 +176,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           }
                         },
                         itemBuilder: (context, index) {
-                          final acc = appState.accounts[index];
+                          final acc = appState.myAccounts[index];
                           final isCc = acc.type == AccountType.creditCard;
                           return Container(
                             key: ValueKey(acc.id),

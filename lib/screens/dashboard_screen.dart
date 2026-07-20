@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -25,7 +26,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    const MethodChannel('com.family.spendwise/sms').invokeMethod('requestPermissions').catchError((_) => null);
+    // Show disclosure dialog before requesting SMS permission (required by Google Play policy)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _requestSmsPermissionWithDisclosure();
+    });
+  }
+
+  Future<void> _requestSmsPermissionWithDisclosure() async {
+    // Only show the dialog on Android and only if not already granted
+    if (!Platform.isAndroid) return;
+    try {
+      final alreadyGranted = await const MethodChannel('com.family.spendwise/sms')
+          .invokeMethod<bool>('hasPermissions') ?? false;
+      if (alreadyGranted || !mounted) return;
+    } catch (_) {
+      // hasPermissions not implemented — fall through and show dialog anyway
+    }
+
+    if (!mounted) return;
+    // Use this.context (State property) after mounted check — safe across async gaps
+    final confirmed = await showDialog<bool>(
+      context: context, // ignore: use_build_context_synchronously
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.sms_outlined, color: Colors.orange),
+            SizedBox(width: 10),
+            Text('SMS Access'),
+          ],
+        ),
+        content: const Text(
+          'SpendWise reads incoming bank SMS messages to automatically detect '
+          'transactions and show them as pending alerts in your Dashboard.\n\n'
+          'Messages are processed entirely on-device and are never uploaded, '
+          'stored externally, or shared with any third party.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not Now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      const MethodChannel('com.family.spendwise/sms')
+          .invokeMethod('requestPermissions')
+          .catchError((_) => null);
+    }
   }
 
   void _showTransactionDetailsSheet(BuildContext context, TransactionItem tx, AppState appState) {
@@ -283,8 +338,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _buildUnrecognizedTransactionsSection(context, appState, isDark),
 
               // Main Balance Card
-              Container(
-                padding: const EdgeInsets.all(24),
+              InkWell(
+                onTap: () => _showAllAccountsNetWorthSheet(context, appState),
+                borderRadius: BorderRadius.circular(24),
+                child: Container(
+                  padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [AppTheme.primary, AppTheme.secondary],
@@ -395,7 +453,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 32),
+            ),
+            const SizedBox(height: 32),
 
               // Expense Distribution Chart Section
               if (totalExpenseForChart > 0) ...[
@@ -931,7 +990,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildAccountCards(BuildContext context, AppState appState, bool isDark) {
     final cardFormatter = NumberFormat.currency(symbol: '₹', decimalDigits: 0);
-    final accounts = appState.accounts;
+    final accounts = appState.myAccounts;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1093,6 +1152,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final balanceController = TextEditingController();
     final limitController = TextEditingController();
     final last4Controller = TextEditingController();
+    final userEmailController = TextEditingController(text: appState.currentUser?.email ?? '');
     AccountType selectedType = AccountType.bank;
     String selectedCardColor = 'FF1A73E8';
 
@@ -1154,6 +1214,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: userEmailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Linked User Email',
+                        hintText: 'e.g. user@example.com',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -1222,6 +1292,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             selectedType, 
                             balance, 
                             limit: limit, 
+                            userEmail: userEmailController.text.trim(),
                             colorHex: selectedCardColor,
                             cardLast4: last4List,
                           );
@@ -1548,6 +1619,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final balanceController = TextEditingController(text: acc.initialBalance.toString());
     final limitController = TextEditingController(text: acc.limit?.toString() ?? '');
     final last4Controller = TextEditingController(text: acc.cardLast4.join(', '));
+    final userEmailController = TextEditingController(text: acc.userEmail ?? appState.currentUser?.email ?? '');
     AccountType selectedType = acc.type;
     String selectedCardColor = acc.colorHex ?? 'FF1A73E8';
 
@@ -1609,6 +1681,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: userEmailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Linked User Email',
+                        hintText: 'e.g. user@example.com',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -1677,6 +1759,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             type: selectedType,
                             initialBalance: balance,
                             limit: limit,
+                            userEmail: userEmailController.text.trim(),
                             colorHex: selectedCardColor,
                             cardLast4: last4List,
                           );
@@ -1906,5 +1989,168 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }).toList();
+  }
+
+  void _showAllAccountsNetWorthSheet(BuildContext context, AppState appState) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final netFormatter = NumberFormat.currency(symbol: '₹', decimalDigits: 2);
+    final cardFormatter = NumberFormat.currency(symbol: '₹', decimalDigits: 0);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "All Accounts & Net Worth",
+                          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Total Net Worth: ${netFormatter.format(appState.netBalance)}",
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primary, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: appState.accounts.isEmpty
+                    ? Center(
+                        child: Text(
+                          "No accounts created yet.",
+                          style: TextStyle(color: theme.hintColor),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: appState.accounts.length,
+                        separatorBuilder: (c, i) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final acc = appState.accounts[index];
+                          final balance = appState.getAccountBalance(acc);
+                          final isCc = acc.type == AccountType.creditCard;
+                          final displayBalance = isCc ? ((acc.limit ?? 0.0) - balance) : balance;
+                          final cardColor = acc.colorHex != null
+                              ? Color(int.parse(acc.colorHex!, radix: 16))
+                              : (isCc ? const Color(0xFF475569) : AppTheme.primary);
+                          final ownerEmail = (acc.userEmail != null && acc.userEmail!.isNotEmpty) 
+                              ? acc.userEmail! 
+                              : (appState.currentUser?.email ?? 'Unspecified');
+
+                          return Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: isDark ? AppTheme.darkSurface : Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: cardColor.withAlpha(40),
+                                  child: Icon(
+                                    isCc ? Icons.credit_card : Icons.account_balance,
+                                    color: cardColor,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              acc.name,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: (isCc ? Colors.purple : Colors.blue).withAlpha(40),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              isCc ? "CARD" : "BANK",
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: isCc ? Colors.purple : Colors.blue,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        "Linked User: $ownerEmail",
+                                        style: TextStyle(fontSize: 11, color: theme.hintColor),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        isCc
+                                            ? "Avail Limit: ${cardFormatter.format(displayBalance)}"
+                                            : "Balance: ${cardFormatter.format(displayBalance)}",
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined, color: AppTheme.primary),
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _showEditAccountDialog(context, acc, appState);
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

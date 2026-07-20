@@ -1,10 +1,31 @@
-# Release Notes - SpendWise v1.0.0
-
-We are excited to release **SpendWise v1.0.0**, a major release featuring core account management, interactive budgeting tools, financial statement exporters, and platform stability fixes.
+# Release Notes — SpendWise
 
 ---
 
-## What's New in v1.0.0
+## v1.1.0 — SMS Transaction Reliability Fix
+
+> **Build**: `1.1.0+2` · **Released**: July 2026
+
+### 🐛 Bug Fixes
+
+#### SMS-Detected Transactions Not Appearing After Dismissing Notification
+Previously, if a bank SMS was received and the user **dismissed or ignored the notification** (instead of tapping it), the detected transaction would silently disappear — it would never show up as a pending unrecognized transaction in the Dashboard.
+
+Two root causes were identified and fixed:
+
+- **File path mismatch** (`SmsReceiver.kt`): The Android SMS receiver was saving detected transactions to `files/unrecognized_transactions.json`, while Flutter's `getApplicationDocumentsDirectory()` points to `app_flutter/unrecognized_transactions.json`. They were different directories, so Flutter never found the file. The receiver now writes to the correct `app_flutter/` directory, with automatic one-time migration of any previously saved data from the old path.
+
+- **No app-resume refresh** (`app_state.dart`): Unrecognized transactions were only loaded from disk once at app startup. If the app was already running in the background when the SMS arrived and the user opened it without tapping the notification, the newly written file was never re-read. `AppState` now implements `WidgetsBindingObserver` and reloads pending transactions every time the app returns to the foreground (`AppLifecycleState.resumed`).
+
+### 📁 Files Changed
+- `android/app/src/main/kotlin/com/family/spendwise/SmsReceiver.kt`
+- `lib/providers/app_state.dart`
+
+---
+
+## v1.0.0 — Initial Release
+
+We are excited to release **SpendWise v1.0.0**, a major release featuring core account management, interactive budgeting tools, financial statement exporters, and platform stability fixes.
 
 ### 🔄 Internal Fund Transfers
 * **Safe Transfers Ledger**: Created a dedicated Transfers ledger screen to perform and log fund movements between bank accounts and credit cards.
@@ -20,7 +41,7 @@ We are excited to release **SpendWise v1.0.0**, a major release featuring core a
 * **Excel-Compatible CSV**: Outputs tabular transactions data ready to load in Microsoft Excel, Google Sheets, or Apple Numbers.
 * **Native System Sharing**: Exports integrate with your device's native share sheet, allowing you to save to files, email, or send statements immediately.
 
-### 🎨 UI polish & Layout Safeguards
+### 🎨 UI Polish & Layout Safeguards
 * **Text Ellipsis**: Applied `maxLines: 1` and `TextOverflow.ellipsis` on transaction titles, creator tags, and profile metadata.
 * **Dynamic Amount Scaling**: Wrapped balances, limits, and income/expense values inside `FittedBox` to scale font size down dynamically on narrow screens or under huge balance figures.
 * **Dropdown Layout Fixes**: Expanded custom dropdown option layouts to prevent screen overflow.
@@ -32,8 +53,10 @@ We are excited to release **SpendWise v1.0.0**, a major release featuring core a
 ---
 
 ## Technical Details
-* **Build Signature**: `1.0.0+1`
-* **Target Platforms**: Android (APK release built), iOS, Web
-* **Database Backend**: Firebase Cloud Firestore
-* **Min Android SDK**: 21
-* **Target Android SDK**: 35
+| Field | v1.1.0 | v1.0.0 |
+|---|---|---|
+| Build Signature | `1.1.0+2` | `1.0.0+1` |
+| Target Platforms | Android, iOS, Web | Android, iOS, Web |
+| Database Backend | Firebase Cloud Firestore | Firebase Cloud Firestore |
+| Min Android SDK | 21 | 21 |
+| Target Android SDK | 35 | 35 |

@@ -59,6 +59,12 @@ class MainActivity : FlutterActivity() {
                     requestSmsAndNotificationPermissions()
                     result.success(true)
                 }
+                "hasPermissions" -> {
+                    val granted = ContextCompat.checkSelfPermission(
+                        this, Manifest.permission.RECEIVE_SMS
+                    ) == PackageManager.PERMISSION_GRANTED
+                    result.success(granted)
+                }
                 "getPendingTransaction" -> {
                     val temp = pendingTransaction
                     pendingTransaction = null

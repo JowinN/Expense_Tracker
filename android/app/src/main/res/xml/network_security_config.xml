@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Block all cleartext (HTTP) traffic — app only talks to Firebase over HTTPS -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Trust only system CAs (no user-installed CAs in production) -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
