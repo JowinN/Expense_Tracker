@@ -671,7 +671,19 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
 class AddTransactionSheet extends StatefulWidget {
   final TransactionItem? editingTransaction;
-  const AddTransactionSheet({super.key, this.editingTransaction});
+  final double? prefilledAmount;
+  final String? prefilledAccountId;
+  final String? prefilledTitle;
+  final String? unrecognizedTxIdToDelete;
+
+  const AddTransactionSheet({
+    super.key, 
+    this.editingTransaction,
+    this.prefilledAmount,
+    this.prefilledAccountId,
+    this.prefilledTitle,
+    this.unrecognizedTxIdToDelete,
+  });
 
   @override
   State<AddTransactionSheet> createState() => _AddTransactionSheetState();
@@ -694,8 +706,12 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     super.initState();
     final tx = widget.editingTransaction;
     _type = tx?.type ?? TransactionType.expense;
-    _titleController = TextEditingController(text: tx?.title ?? '');
-    _amountController = TextEditingController(text: tx != null ? tx.amount.toString() : '');
+    _titleController = TextEditingController(text: tx?.title ?? widget.prefilledTitle ?? '');
+    _amountController = TextEditingController(
+      text: tx != null 
+          ? tx.amount.toString() 
+          : (widget.prefilledAmount != null ? widget.prefilledAmount.toString() : ''),
+    );
     _selectedCategoryId = tx?.categoryId;
     _selectedDate = tx?.date ?? DateTime.now();
     _isRecurring = tx?.isRecurring ?? false;
@@ -703,7 +719,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     if (_isRecurring && _recurrenceInterval == RecurrenceInterval.none) {
       _recurrenceInterval = RecurrenceInterval.monthly;
     }
-    _selectedAccountId = tx?.accountId;
+    _selectedAccountId = tx?.accountId ?? widget.prefilledAccountId;
     _selectedToAccountId = tx?.toAccountId;
   }
 
@@ -792,6 +808,9 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
         recurrenceInterval: _isRecurring ? _recurrenceInterval : RecurrenceInterval.none,
         toAccountId: categoryId == 'credit_card_payment' ? _selectedToAccountId : null,
       );
+      if (widget.unrecognizedTxIdToDelete != null) {
+        await appState.deleteUnrecognizedTransaction(widget.unrecognizedTxIdToDelete!);
+      }
     }
 
     if (mounted) Navigator.pop(context);

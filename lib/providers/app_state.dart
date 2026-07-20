@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/database_service.dart';
@@ -12,6 +16,7 @@ class AppState extends ChangeNotifier {
   List<TransactionItem> _transactions = [];
   List<CategoryItem> _categories = [];
   List<AccountItem> _accounts = [];
+  List<UnrecognizedTransaction> _unrecognizedTransactions = [];
   ThemeMode _themeMode = ThemeMode.system;
   bool _isLoading = false;
   bool _isLoadingTransactions = false;
@@ -19,8 +24,13 @@ class AppState extends ChangeNotifier {
   StreamSubscription<AppUser?>? _authSubscription;
   StreamSubscription<List<TransactionItem>>? _transactionSubscription;
 
+  static const _channel = MethodChannel('com.family.spendwise/sms');
+
   AppState() {
     _initAuthStream();
+    _initMethodChannel();
+    _loadUnrecognizedTransactions();
+    Future.delayed(const Duration(seconds: 1), () => checkPendingTransaction());
   }
 
   // Getters
@@ -30,6 +40,7 @@ class AppState extends ChangeNotifier {
   List<TransactionItem> get transactions => _transactions;
   List<CategoryItem> get categories => _categories;
   List<AccountItem> get accounts => _accounts;
+  List<UnrecognizedTransaction> get unrecognizedTransactions => _unrecognizedTransactions;
   ThemeMode get themeMode => _themeMode;
   bool get isLoading => _isLoading;
   bool get isLoadingTransactions => _isLoadingTransactions;
@@ -298,7 +309,7 @@ class AppState extends ChangeNotifier {
   }
 
   // Database Actions - Accounts
-  Future<void> addAccount(String name, AccountType type, double initialBalance, {double? limit, String? colorHex}) async {
+  Future<void> addAccount(String name, AccountType type, double initialBalance, {double? limit, String? colorHex, List<String> cardLast4 = const []}) async {
     if (_currentUser == null) return;
     final newAccount = AccountItem(
       id: 'acc_${DateTime.now().microsecondsSinceEpoch}',
@@ -309,6 +320,7 @@ class AppState extends ChangeNotifier {
       creatorId: _currentUser!.id,
       colorHex: colorHex,
       orderIndex: _accounts.length,
+      cardLast4: cardLast4,
     );
     await _databaseService.addAccount(newAccount);
     await _loadAccounts();
@@ -456,6 +468,75 @@ class AppState extends ChangeNotifier {
       }
     }
     await _loadCategories();
+  }
+
+  void _initMethodChannel() {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == "onTransactionDetected") {
+        final map = Map<String, dynamic>.from(call.arguments);
+        final tx = UnrecognizedTransaction(
+          id: map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          amount: (map['amount'] as num).toDouble(),
+          accountLast4: map['accountLast4'],
+          rawSms: map['rawSms'] ?? '',
+          date: DateTime.tryParse(map['date'] ?? '') ?? DateTime.now(),
+        );
+        await addUnrecognizedTransaction(tx);
+      }
+    });
+  }
+
+  Future<void> checkPendingTransaction() async {
+    try {
+      final pending = await _channel.invokeMethod<Map<dynamic, dynamic>>('getPendingTransaction');
+      if (pending != null) {
+        final map = Map<String, dynamic>.from(pending);
+        final tx = UnrecognizedTransaction(
+          id: map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          amount: (map['amount'] as num).toDouble(),
+          accountLast4: map['accountLast4'],
+          rawSms: map['rawSms'] ?? '',
+          date: DateTime.tryParse(map['date'] ?? '') ?? DateTime.now(),
+        );
+        await addUnrecognizedTransaction(tx);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadUnrecognizedTransactions() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/unrecognized_transactions.json');
+      if (await file.exists()) {
+        final contents = await file.readAsString();
+        final list = jsonDecode(contents) as List<dynamic>;
+        _unrecognizedTransactions = list.map((item) => UnrecognizedTransaction.fromJson(item)).toList();
+      } else {
+        _unrecognizedTransactions = [];
+      }
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _saveUnrecognizedTransactions() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/unrecognized_transactions.json');
+      final contents = jsonEncode(_unrecognizedTransactions.map((item) => item.toJson()).toList());
+      await file.writeAsString(contents);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> deleteUnrecognizedTransaction(String id) async {
+    _unrecognizedTransactions.removeWhere((t) => t.id == id);
+    await _saveUnrecognizedTransactions();
+  }
+
+  Future<void> addUnrecognizedTransaction(UnrecognizedTransaction tx) async {
+    if (_unrecognizedTransactions.any((item) => item.id == tx.id)) return;
+    _unrecognizedTransactions.add(tx);
+    await _saveUnrecognizedTransactions();
   }
 
   @override

@@ -47,6 +47,7 @@ class AccountItem {
   final String creatorId;
   final String? colorHex;
   final int orderIndex;
+  final List<String> cardLast4;
 
   AccountItem({
     required this.id,
@@ -57,6 +58,7 @@ class AccountItem {
     required this.creatorId,
     this.colorHex,
     this.orderIndex = 0,
+    this.cardLast4 = const [],
   });
 
   AccountItem copyWith({
@@ -68,6 +70,7 @@ class AccountItem {
     String? creatorId,
     String? colorHex,
     int? orderIndex,
+    List<String>? cardLast4,
   }) {
     return AccountItem(
       id: id ?? this.id,
@@ -78,6 +81,7 @@ class AccountItem {
       creatorId: creatorId ?? this.creatorId,
       colorHex: colorHex ?? this.colorHex,
       orderIndex: orderIndex ?? this.orderIndex,
+      cardLast4: cardLast4 ?? this.cardLast4,
     );
   }
 
@@ -91,6 +95,7 @@ class AccountItem {
       'creatorId': creatorId,
       'colorHex': colorHex,
       'orderIndex': orderIndex,
+      'cardLast4': cardLast4,
     };
   }
 
@@ -104,6 +109,7 @@ class AccountItem {
       creatorId: json['creatorId'] ?? '',
       colorHex: json['colorHex'],
       orderIndex: json['orderIndex'] ?? 0,
+      cardLast4: json['cardLast4'] != null ? List<String>.from(json['cardLast4']) : const [],
     );
   }
 }
@@ -359,3 +365,39 @@ const Map<String, IconData> categoryIcons = {
   // Miscellaneous
   'other': Icons.more_horiz,
 };
+
+class UnrecognizedTransaction {
+  final String id;
+  final double amount;
+  final String? accountLast4;
+  final String rawSms;
+  final DateTime date;
+
+  UnrecognizedTransaction({
+    required this.id,
+    required this.amount,
+    this.accountLast4,
+    required this.rawSms,
+    required this.date,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'amount': amount,
+      'accountLast4': accountLast4,
+      'rawSms': rawSms,
+      'date': date.toIso8601String(),
+    };
+  }
+
+  factory UnrecognizedTransaction.fromJson(Map<String, dynamic> json) {
+    return UnrecognizedTransaction(
+      id: json['id'] ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      accountLast4: json['accountLast4'],
+      rawSms: json['rawSms'] ?? '',
+      date: json['date'] != null ? DateTime.parse(json['date']) : DateTime.now(),
+    );
+  }
+}

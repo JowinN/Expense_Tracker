@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
@@ -19,6 +20,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _touchedIndex = -1;
 
   final formatter = NumberFormat.currency(symbol: '₹', decimalDigits: 2);
+
+  @override
+  void initState() {
+    super.initState();
+    const MethodChannel('com.family.spendwise/sms').invokeMethod('requestPermissions').catchError((_) => null);
+  }
 
   void _showTransactionDetailsSheet(BuildContext context, TransactionItem tx, AppState appState) {
     showModalBottomSheet(
@@ -271,6 +278,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               // Accounts & Cards horizontal scroll
               _buildAccountCards(context, appState, isDark),
+
+              _buildUnrecognizedTransactionsSection(context, appState, isDark),
 
               // Main Balance Card
               Container(
@@ -713,6 +722,154 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildUnrecognizedTransactionsSection(BuildContext context, AppState appState, bool isDark) {
+    final list = appState.unrecognizedTransactions;
+    if (list.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "Pending SMS Alerts",
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.orange.shade700),
+            ),
+            Text(
+              "${list.length} New",
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.orange.shade800,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 160,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: list.length,
+            separatorBuilder: (c, i) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final item = list[index];
+              
+              // Try to find a matching account
+              AccountItem? matchedAccount;
+              if (item.accountLast4 != null && item.accountLast4!.isNotEmpty) {
+                for (var acc in appState.accounts) {
+                  if (acc.cardLast4.contains(item.accountLast4)) {
+                    matchedAccount = acc;
+                    break;
+                  }
+                }
+              }
+
+              return Container(
+                width: 280,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.orange.withAlpha((0.3 * 255).toInt()),
+                    width: 1.5,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "₹${item.amount.toStringAsFixed(2)}",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: isDark ? Colors.orange.shade300 : Colors.orange.shade900,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: matchedAccount != null 
+                              ? Colors.green.withAlpha((0.2 * 255).toInt())
+                              : Colors.grey.withAlpha((0.2 * 255).toInt()),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            matchedAccount != null ? matchedAccount.name : "Unknown A/c",
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: matchedAccount != null ? Colors.green : Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: Text(
+                        item.rawSms,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            appState.deleteUnrecognizedTransaction(item.id);
+                          },
+                          child: const Text("Discard", style: TextStyle(color: Colors.red, fontSize: 12)),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            minimumSize: Size.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (context) => AddTransactionSheet(
+                                prefilledAmount: item.amount,
+                                prefilledAccountId: matchedAccount?.id,
+                                prefilledTitle: "Debit Alert",
+                                unrecognizedTxIdToDelete: item.id,
+                              ),
+                            );
+                          },
+                          child: const Text("Add", style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
   Widget _buildAccountCards(BuildContext context, AppState appState, bool isDark) {
     final cardFormatter = NumberFormat.currency(symbol: '₹', decimalDigits: 0);
     final accounts = appState.accounts;
@@ -876,6 +1033,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final nameController = TextEditingController();
     final balanceController = TextEditingController();
     final limitController = TextEditingController();
+    final last4Controller = TextEditingController();
     AccountType selectedType = AccountType.bank;
     String selectedCardColor = 'FF1A73E8';
 
@@ -966,6 +1124,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ],
                     const SizedBox(height: 16),
+                    TextField(
+                      controller: last4Controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Last 4 Digits (comma-separated, e.g. 1234, 5678)',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     const Text("Card Theme Color:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 8),
                     Row(
@@ -987,6 +1152,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         final limit = selectedType == AccountType.creditCard 
                             ? (double.tryParse(limitController.text.trim()) ?? 10000.0) 
                             : null;
+                        final last4Text = last4Controller.text.trim();
+                        final last4List = last4Text.isNotEmpty
+                            ? last4Text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList()
+                            : <String>[];
 
                         if (name.isNotEmpty) {
                           appState.addAccount(
@@ -994,7 +1163,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             selectedType, 
                             balance, 
                             limit: limit, 
-                            colorHex: selectedCardColor
+                            colorHex: selectedCardColor,
+                            cardLast4: last4List,
                           );
                           Navigator.pop(context);
                         }
