@@ -1488,6 +1488,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final nameController = TextEditingController(text: acc.name);
     final balanceController = TextEditingController(text: acc.initialBalance.toString());
     final limitController = TextEditingController(text: acc.limit?.toString() ?? '');
+    final last4Controller = TextEditingController(text: acc.cardLast4.join(', '));
     AccountType selectedType = acc.type;
     String selectedCardColor = acc.colorHex ?? 'FF1A73E8';
 
@@ -1578,6 +1579,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ],
                     const SizedBox(height: 16),
+                    TextField(
+                      controller: last4Controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Last 4 Digits (comma-separated, e.g. 1234, 5678)',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     const Text("Card Theme Color:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 8),
                     Row(
@@ -1599,6 +1607,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         final limit = selectedType == AccountType.creditCard 
                             ? (double.tryParse(limitController.text.trim()) ?? 10000.0) 
                             : null;
+                        final last4Text = last4Controller.text.trim();
+                        final last4List = last4Text.isNotEmpty
+                            ? last4Text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList()
+                            : <String>[];
 
                         if (name.isNotEmpty) {
                           final updatedAccount = acc.copyWith(
@@ -1607,6 +1619,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             initialBalance: balance,
                             limit: limit,
                             colorHex: selectedCardColor,
+                            cardLast4: last4List,
                           );
                           await appState.updateAccount(updatedAccount);
                           Navigator.pop(context);
