@@ -7,7 +7,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/transactions_screen.dart';
 import 'screens/categories_screen.dart';
 import 'screens/settings_screen.dart';
-import 'screens/transfers_screen.dart';
+import 'screens/budgets_screen.dart';
 import 'theme/theme.dart';
 
 void main() async {
@@ -73,52 +73,65 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   final List<Widget> _screens = const [
     DashboardScreen(),
     TransactionsScreen(),
-    TransfersScreen(),
+    BudgetsScreen(),
     CategoriesScreen(),
     SettingsScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard),
-            label: "Dashboard",
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+          border: Border(
+            top: BorderSide(
+              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              width: 1,
+            ),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long_outlined),
-            activeIcon: Icon(Icons.receipt_long),
-            label: "Transactions",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.swap_horiz_outlined),
-            activeIcon: Icon(Icons.swap_horiz),
-            label: "Transfers",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.category_outlined),
-            activeIcon: Icon(Icons.category),
-            label: "Categories",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
-            label: "Settings",
-          ),
-        ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.dashboard_outlined),
+              selectedIcon: Icon(Icons.dashboard),
+              label: "Dashboard",
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.receipt_long_outlined),
+              selectedIcon: Icon(Icons.receipt_long),
+              label: "Transactions",
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.pie_chart_outline_rounded),
+              selectedIcon: Icon(Icons.pie_chart_rounded),
+              label: "Budgets",
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.category_outlined),
+              selectedIcon: Icon(Icons.category),
+              label: "Categories",
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: "Settings",
+            ),
+          ],
+        ),
       ),
     );
   }

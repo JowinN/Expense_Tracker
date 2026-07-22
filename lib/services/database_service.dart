@@ -18,6 +18,19 @@ abstract class DatabaseService {
   Future<void> updateTransaction(TransactionItem transaction);
   Future<void> deleteTransaction(String id);
 
+  Stream<List<BudgetItem>> streamBudgets();
+  Future<void> addBudget(BudgetItem budget);
+  Future<void> updateBudget(BudgetItem budget);
+  Future<void> deleteBudget(String id);
+
+  Stream<List<BillReminderItem>> streamBillReminders();
+  Future<void> addBillReminder(BillReminderItem bill);
+  Future<void> updateBillReminder(BillReminderItem bill);
+  Future<void> deleteBillReminder(String id);
+
+  Future<NotificationSettings> getNotificationSettings();
+  Future<void> saveNotificationSettings(NotificationSettings settings);
+
   bool get isMock;
 }
 
@@ -103,6 +116,66 @@ class FirestoreDatabaseService implements DatabaseService {
   @override
   Future<void> deleteTransaction(String id) async {
     await _db.collection('transactions').doc(id).delete();
+  }
+
+  @override
+  Stream<List<BudgetItem>> streamBudgets() {
+    return _db.collection('budgets').snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) => BudgetItem.fromJson(doc.data())).toList();
+    });
+  }
+
+  @override
+  Future<void> addBudget(BudgetItem budget) async {
+    await _db.collection('budgets').doc(budget.id).set(budget.toJson());
+  }
+
+  @override
+  Future<void> updateBudget(BudgetItem budget) async {
+    await _db.collection('budgets').doc(budget.id).update(budget.toJson());
+  }
+
+  @override
+  Future<void> deleteBudget(String id) async {
+    await _db.collection('budgets').doc(id).delete();
+  }
+
+  @override
+  Stream<List<BillReminderItem>> streamBillReminders() {
+    return _db.collection('bill_reminders').snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) => BillReminderItem.fromJson(doc.data())).toList();
+    });
+  }
+
+  @override
+  Future<void> addBillReminder(BillReminderItem bill) async {
+    await _db.collection('bill_reminders').doc(bill.id).set(bill.toJson());
+  }
+
+  @override
+  Future<void> updateBillReminder(BillReminderItem bill) async {
+    await _db.collection('bill_reminders').doc(bill.id).update(bill.toJson());
+  }
+
+  @override
+  Future<void> deleteBillReminder(String id) async {
+    await _db.collection('bill_reminders').doc(id).delete();
+  }
+
+  @override
+  Future<NotificationSettings> getNotificationSettings() async {
+    try {
+      final doc = await _db.collection('settings').doc('notifications').get();
+      if (doc.exists && doc.data() != null) {
+        return NotificationSettings.fromJson(doc.data()!);
+      }
+    } catch (_) {}
+    return const NotificationSettings();
+  }
+
+  @override
+  Future<void> saveNotificationSettings(NotificationSettings settings) async {
+    await _db.collection('settings').doc('notifications').set(settings.toJson());
   }
 }
 

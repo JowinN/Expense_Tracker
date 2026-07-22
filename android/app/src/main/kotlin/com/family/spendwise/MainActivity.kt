@@ -70,6 +70,12 @@ class MainActivity : FlutterActivity() {
                     pendingTransaction = null
                     result.success(temp)
                 }
+                "showLocalNotification" -> {
+                    val title = call.argument<String>("title") ?: "Alert"
+                    val body = call.argument<String>("body") ?: ""
+                    showSystemNotification(title, body)
+                    result.success(true)
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -77,6 +83,44 @@ class MainActivity : FlutterActivity() {
         }
         
         sendTransactionToFlutter()
+    }
+
+    private fun showSystemNotification(title: String, body: String) {
+        val channelId = "spendwise_alerts"
+        val notificationManager = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                channelId,
+                "SpendWise Reminders & Alerts",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts for bills, recurring transactions, and budgets"
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            this,
+            System.currentTimeMillis().toInt(),
+            intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setAutoCancel(true)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }
 
     private fun requestSmsAndNotificationPermissions() {

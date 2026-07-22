@@ -333,12 +333,12 @@ class _CategoryGrid extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 88),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
-        childAspectRatio: 1.35,
+        childAspectRatio: 1.3,
       ),
       itemCount: items.length,
       itemBuilder: (context, index) {
@@ -350,7 +350,7 @@ class _CategoryGrid extends StatelessWidget {
         return Container(
           decoration: BoxDecoration(
             color: isDark ? AppTheme.darkSurface : Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: catColor.withAlpha((0.25 * 255).toInt()),
               width: 1.5,
@@ -364,7 +364,7 @@ class _CategoryGrid extends StatelessWidget {
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             child: InkWell(
               onTap: () => onTap(item),
               child: Stack(
@@ -376,7 +376,9 @@ class _CategoryGrid extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: catColor.withAlpha((0.15 * 255).toInt()),
                             shape: BoxShape.circle,
@@ -384,7 +386,7 @@ class _CategoryGrid extends StatelessWidget {
                           child: Icon(
                             categoryIcons[item.iconKey] ?? Icons.more_horiz,
                             color: catColor,
-                            size: 24,
+                            size: 22,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -443,17 +445,7 @@ class _AddCategorySheetState extends State<AddCategorySheet> {
   late Color _selectedColor;
   String _iconSearchQuery = '';
 
-  final List<Color> _colors = const [
-    Color(0xFFE74C3C), // Red
-    Color(0xFFE67E22), // Orange
-    Color(0xFFF1C40F), // Yellow
-    Color(0xFF2ECC71), // Green
-    Color(0xFF1ABC9C), // Teal
-    Color(0xFF3498DB), // Blue
-    Color(0xFF9B59B6), // Purple
-    Color(0xFFE84393), // Pink
-    Color(0xFF2D3436), // Charcoal
-  ];
+  final List<Color> _colors = appColors.map((c) => Color(c)).toList();
 
   @override
   void initState() {

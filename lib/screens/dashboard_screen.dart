@@ -7,9 +7,47 @@ import 'package:intl/intl.dart';
 import '../providers/app_state.dart';
 import '../models/models.dart';
 import '../theme/theme.dart';
+import '../widgets/account_selector.dart';
 
 import 'transactions_screen.dart'; // import to reuse AddTransactionSheet
-import 'transfers_screen.dart';
+import 'recurring_transactions_screen.dart';
+import 'bill_reminders_screen.dart';
+
+enum DueItemType { bill, recurring }
+
+class DashboardDueItem {
+  final String id;
+  final String title;
+  final double amount;
+  final String categoryId;
+  final DateTime dueDate;
+  final TransactionType type;
+  final DueItemType itemType;
+  final BillReminderItem? bill;
+  final TransactionItem? recurringTx;
+
+  DashboardDueItem.fromBill(BillReminderItem b)
+      : id = 'bill_${b.id}',
+        title = b.title,
+        amount = b.amount,
+        categoryId = b.categoryId,
+        dueDate = b.dueDate,
+        type = TransactionType.expense,
+        itemType = DueItemType.bill,
+        bill = b,
+        recurringTx = null;
+
+  DashboardDueItem.fromRecurring(TransactionItem t)
+      : id = 'rec_${t.id}',
+        title = t.title,
+        amount = t.amount,
+        categoryId = t.categoryId,
+        dueDate = t.nextRecurringDate!,
+        type = t.type,
+        itemType = DueItemType.recurring,
+        bill = null,
+        recurringTx = t;
+}
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -261,35 +299,98 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  String _selectedDashboardPeriod = 'This Month';
+  DateTimeRange? _customPeriodRange;
+
+  DateTimeRange _getPeriodRange() {
+    final now = DateTime.now();
+    if (_selectedDashboardPeriod == 'Today') {
+      final start = DateTime(now.year, now.month, now.day);
+      final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      return DateTimeRange(start: start, end: end);
+    } else if (_selectedDashboardPeriod == 'This Week') {
+      final start = now.subtract(Duration(days: now.weekday - 1));
+      final startDate = DateTime(start.year, start.month, start.day);
+      return DateTimeRange(start: startDate, end: now);
+    } else if (_selectedDashboardPeriod == 'Last Month') {
+      final prevMonth = DateTime(now.year, now.month - 1, 1);
+      final lastDay = DateTime(now.year, now.month, 0, 23, 59, 59);
+      return DateTimeRange(start: prevMonth, end: lastDay);
+    } else if (_selectedDashboardPeriod == 'This Year') {
+      return DateTimeRange(start: DateTime(now.year, 1, 1), end: DateTime(now.year, 12, 31, 23, 59, 59));
+    } else if (_selectedDashboardPeriod == 'Custom' && _customPeriodRange != null) {
+      return _customPeriodRange!;
+    }
+    // Default: 'This Month'
+    return DateTimeRange(start: DateTime(now.year, now.month, 1), end: DateTime(now.year, now.month + 1, 0, 23, 59, 59));
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
-    final transactions = appState.transactions.where((t) => !t.isTransfer).toList();
-    final categories = appState.categories;
 
-    // Use AppState Dynamic Calculations
-    double totalIncome = appState.totalIncome;
-    double totalExpense = appState.totalExpense;
+    final categories = appState.categories;
+    final periodRange = _getPeriodRange();
+
+    // Period Filtered Transactions
+    final periodTxs = appState.transactions.where((t) {
+      if (t.isTransfer) return false;
+      return t.date.isAfter(periodRange.start.subtract(const Duration(seconds: 1))) &&
+             t.date.isBefore(periodRange.end.add(const Duration(seconds: 1)));
+    }).toList();
+
+    final transactions = periodTxs;
+
+    final now = DateTime.now();
+    final threeDaysLimit = DateTime(now.year, now.month, now.day, 23, 59, 59).add(const Duration(days: 3));
+
+    final List<DashboardDueItem> upcomingDueItems = [];
+
+    for (var b in appState.billReminders) {
+      if (!b.isPaid && b.dueDate.isBefore(threeDaysLimit)) {
+        upcomingDueItems.add(DashboardDueItem.fromBill(b));
+      }
+    }
+
+    for (var t in appState.transactions) {
+      if (t.isRecurring && t.nextRecurringDate != null && t.nextRecurringDate!.isBefore(threeDaysLimit)) {
+        upcomingDueItems.add(DashboardDueItem.fromRecurring(t));
+      }
+    }
+
+    upcomingDueItems.sort((a, b) => a.dueDate.compareTo(b.dueDate));
+
+    double periodIncome = 0.0;
+    double periodExpense = 0.0;
+    double periodSavings = 0.0;
+    for (var tx in periodTxs) {
+      if (tx.type == TransactionType.income) periodIncome += tx.amount;
+      if (tx.type == TransactionType.expense) {
+        periodExpense += tx.amount;
+        if (appState.savingsCategoryIds.contains(tx.categoryId)) {
+          periodSavings += tx.amount;
+        }
+      }
+    }
+
+    double savings = appState.savingsCategoryIds.isNotEmpty
+        ? periodSavings
+        : (periodIncome - periodExpense);
+    double cashFlow = periodIncome - periodExpense;
     double balance = appState.netBalance;
 
-    // Calculate Category Breakdown for Expenses
-    final categoryTotals = _calculateCategoryTotals(transactions, categories);
+    // Calculate Category Breakdown for Expenses in Period
+    final categoryTotals = _calculateCategoryTotals(periodTxs, categories);
     final totalExpenseForChart = categoryTotals.values.fold<double>(0, (sum, val) => sum + val);
-
-    // Filter Recurring Transactions
-    final recurringTransactions = transactions.where((t) => t.isRecurring).toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Dashboard"),
       ),
       body: RefreshIndicator(
-        onRefresh: () async {
-          // Stream notifies automatically
-        },
+        onRefresh: () async {},
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(20.0),
@@ -337,12 +438,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               _buildUnrecognizedTransactionsSection(context, appState, isDark),
 
-              // Main Balance Card
-              InkWell(
-                onTap: () => _showAllAccountsNetWorthSheet(context, appState),
-                borderRadius: BorderRadius.circular(24),
-                child: Container(
-                  padding: const EdgeInsets.all(24),
+              // Main Balance Card (Net Worth) with Timeframe Selector
+              Container(
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [AppTheme.primary, AppTheme.secondary],
@@ -358,103 +455,188 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     )
                   ],
                 ),
+                padding: const EdgeInsets.all(22),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "Net Worth Balance",
-                      style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 8),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        formatter.format(balance),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(
-                          child: Row(
+                        InkWell(
+                          onTap: () => _showAllAccountsNetWorthSheet(context, appState),
+                          child: const Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha((0.2 * 255).toInt()),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.arrow_downward, color: Colors.white, size: 20),
+                              Text(
+                                "Net Worth Balance",
+                                style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text("Total Income", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                                    FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        formatter.format(totalIncome),
-                                        style: const TextStyle(
-                                            color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              SizedBox(width: 4),
+                              Icon(Icons.info_outline_rounded, color: Colors.white70, size: 14),
                             ],
                           ),
                         ),
-                        Container(width: 1.5, height: 40, color: Colors.white24),
-                        Expanded(
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 16),
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha((0.2 * 255).toInt()),
-                                  shape: BoxShape.circle,
+
+                        // Embedded Timeframe Selector Dropdown Pill
+                        PopupMenuButton<String>(
+                          padding: EdgeInsets.zero,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withAlpha((0.2 * 255).toInt()),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withAlpha((0.35 * 255).toInt())),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.calendar_today_rounded, color: Colors.white, size: 12),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _selectedDashboardPeriod,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                                child: const Icon(Icons.arrow_upward, color: Colors.white, size: 20),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text("Total Expense", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                                    FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        formatter.format(totalExpense),
-                                        style: const TextStyle(
-                                            color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                                const SizedBox(width: 2),
+                                const Icon(Icons.arrow_drop_down_rounded, color: Colors.white, size: 18),
+                              ],
+                            ),
                           ),
+                          onSelected: (val) async {
+                            if (val == 'Custom') {
+                              final range = await showDateRangePicker(
+                                context: context,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (range != null) {
+                                setState(() {
+                                  _selectedDashboardPeriod = 'Custom';
+                                  _customPeriodRange = range;
+                                });
+                              }
+                            } else {
+                              setState(() {
+                                _selectedDashboardPeriod = val;
+                              });
+                            }
+                          },
+                          itemBuilder: (ctx) => [
+                            'Today',
+                            'This Week',
+                            'This Month',
+                            'Last Month',
+                            'This Year',
+                            'Custom',
+                          ].map((p) => PopupMenuItem(value: p, child: Text(p))).toList(),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 10),
+                    InkWell(
+                      onTap: () => _showAllAccountsNetWorthSheet(context, appState),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          formatter.format(balance),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 32),
+              const SizedBox(height: 16),
+
+              // Period Summary Grid Card (Income, Expense, Savings, Cash Flow)
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "Summary ($_selectedDashboardPeriod)",
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                        Icon(Icons.query_stats_rounded, color: AppTheme.primary, size: 20),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _buildSummaryGridTile(
+                              "Total Income",
+                              formatter.format(periodIncome),
+                              Icons.arrow_downward,
+                              AppTheme.incomeColor,
+                              isDark,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildSummaryGridTile(
+                              "Total Expense",
+                              formatter.format(periodExpense),
+                              Icons.arrow_upward,
+                              AppTheme.expenseColor,
+                              isDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _buildSummaryGridTile(
+                              "Savings",
+                              formatter.format(savings),
+                              Icons.savings_outlined,
+                              savings >= 0 ? AppTheme.incomeColor : AppTheme.expenseColor,
+                              isDark,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildSummaryGridTile(
+                              "Cash Flow",
+                              formatter.format(cashFlow),
+                              Icons.swap_vert_rounded,
+                              cashFlow >= 0 ? AppTheme.primary : AppTheme.warningColor,
+                              isDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
 
               // Expense Distribution Chart Section
               if (totalExpenseForChart > 0) ...[
@@ -462,40 +644,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   "Expense Distribution",
                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(20.0),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        SizedBox(
-                          height: 180,
-                          child: PieChart(
-                            PieChartData(
-                              pieTouchData: PieTouchData(
-                                touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                                  setState(() {
-                                    if (!event.isInterestedForInteractions ||
-                                        pieTouchResponse == null ||
-                                        pieTouchResponse.touchedSection == null) {
-                                      _touchedIndex = -1;
-                                      return;
-                                    }
-                                    _touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
-                                  });
-                                },
+                        Center(
+                          child: SizedBox(
+                            height: 180,
+                            child: PieChart(
+                              PieChartData(
+                                pieTouchData: PieTouchData(
+                                  touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                                    setState(() {
+                                      if (!event.isInterestedForInteractions ||
+                                          pieTouchResponse == null ||
+                                          pieTouchResponse.touchedSection == null) {
+                                        _touchedIndex = -1;
+                                        return;
+                                      }
+                                      _touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                                    });
+                                  },
+                                ),
+                                borderData: FlBorderData(show: false),
+                                sectionsSpace: 4,
+                                centerSpaceRadius: 40,
+                                sections: _getPieChartSections(categoryTotals, totalExpenseForChart),
                               ),
-                              borderData: FlBorderData(show: false),
-                              sectionsSpace: 4,
-                              centerSpaceRadius: 40,
-                              sections: _getPieChartSections(categoryTotals, totalExpenseForChart),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
                         Wrap(
-                          spacing: 12,
-                          runSpacing: 8,
+                          spacing: 16,
+                          runSpacing: 10,
                           alignment: WrapAlignment.center,
                           children: categoryTotals.keys.map((cat) {
                             return Row(
@@ -522,37 +707,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
               ],
 
-              // Recurring Expenses Section
-              if (recurringTransactions.isNotEmpty) ...[
+              // Unified Upcoming Due (Next 3 Days) Section (Bill Reminders + Recurring Transactions)
+              if (upcomingDueItems.isNotEmpty) ...[
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      "Upcoming Recurring Bills",
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    Row(
+                      children: [
+                        Text(
+                          "Upcoming Due",
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.warningColor.withAlpha((0.15 * 255).toInt()),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Text(
+                            "Next 3 Days",
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.warningColor,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     Text(
-                      "${recurringTransactions.length} Active",
+                      "${upcomingDueItems.length} Due Soon",
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppTheme.primary,
-                        fontWeight: FontWeight.bold,
+                        color: theme.hintColor,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
-                  height: 135,
+                  height: 165,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount: recurringTransactions.length,
-                    separatorBuilder: (c, i) => const SizedBox(width: 12),
+                    itemCount: upcomingDueItems.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
                     itemBuilder: (context, index) {
-                      final item = recurringTransactions[index];
-                      final cat = categories.firstWhere(
+                      final item = upcomingDueItems[index];
+                      final cat = appState.categories.firstWhere(
                         (c) => c.id == item.categoryId,
                         orElse: () => CategoryItem(
                           id: 'other',
@@ -562,77 +767,283 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           type: TransactionType.expense,
                         ),
                       );
+                      final isIncome = item.type == TransactionType.income;
+                      final isBill = item.itemType == DueItemType.bill;
+                      final daysLeft = item.dueDate.difference(DateTime(now.year, now.month, now.day)).inDays;
 
-                      final daysLeft = item.nextRecurringDate != null
-                          ? item.nextRecurringDate!.difference(DateTime.now()).inDays
-                          : 0;
+                      String dueText = "";
+                      Color dueColor = theme.hintColor;
+                      if (daysLeft < 0) {
+                        dueText = "Overdue by ${-daysLeft}d";
+                        dueColor = AppTheme.expenseColor;
+                      } else if (daysLeft == 0) {
+                        dueText = "Due Today";
+                        dueColor = Colors.orange;
+                      } else {
+                        dueText = "Due in $daysLeft day${daysLeft > 1 ? 's' : ''}";
+                        dueColor = AppTheme.primary;
+                      }
 
-                      return InkWell(
-                        onTap: () => _showRecurringBillDetailsSheet(context, item, appState, categories, isDark),
-                        borderRadius: BorderRadius.circular(18),
-                        child: Container(
-                          width: 170,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: isDark ? AppTheme.darkSurface : Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                              width: 1,
-                            ),
+                      return Container(
+                        width: 250,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppTheme.darkSurface : AppTheme.lightCard,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Color(cat.colorValue).withAlpha((0.15 * 255).toInt()),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    categoryIcons[cat.iconKey] ?? (isBill ? Icons.receipt_long_rounded : Icons.repeat),
+                                    size: 14,
+                                    color: Color(cat.colorValue),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: isBill
+                                        ? Colors.amber.withAlpha((0.2 * 255).toInt())
+                                        : AppTheme.primary.withAlpha((0.2 * 255).toInt()),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    isBill ? "BILL" : "RECURRING",
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: isBill ? Colors.amber[800] : AppTheme.primary,
+                                    ),
+                                  ),
+                                ),
+                                PopupMenuButton<String>(
+                                  padding: EdgeInsets.zero,
+                                  icon: const Icon(Icons.more_vert_rounded, size: 18),
+                                  onSelected: (val) async {
+                                    if (val == 'pay_bill') {
+                                      showModalBottomSheet(
+                                        context: context,
+                                        isScrollControlled: true,
+                                        backgroundColor: Colors.transparent,
+                                        builder: (context) => AddTransactionSheet(
+                                          prefilledTitle: item.bill!.title,
+                                          prefilledAmount: item.bill!.amount,
+                                          prefilledType: TransactionType.expense,
+                                          prefilledCategoryId: item.bill!.categoryId,
+                                          isTitleAndAmountLocked: true,
+                                          billToMarkAsPaid: item.bill,
+                                        ),
+                                      );
+                                    } else if (val == 'run_rec') {
+                                      showModalBottomSheet(
+                                        context: context,
+                                        isScrollControlled: true,
+                                        backgroundColor: Colors.transparent,
+                                        builder: (context) => AddTransactionSheet(
+                                          prefilledTitle: item.recurringTx!.title,
+                                          prefilledAmount: item.recurringTx!.amount,
+                                          prefilledType: item.recurringTx!.type,
+                                          prefilledCategoryId: item.recurringTx!.categoryId,
+                                          prefilledAccountId: item.recurringTx!.accountId,
+                                          prefilledBudgetId: item.recurringTx!.budgetId,
+                                          isTitleAndAmountLocked: true,
+                                        ),
+                                      );
+                                    } else if (val == 'snooze_1d' && item.recurringTx != null) {
+                                      await appState.snoozeRecurringTransaction(
+                                        item.recurringTx!,
+                                        item.recurringTx!.nextRecurringDate!.add(const Duration(days: 1)),
+                                      );
+                                    } else if (val == 'snooze_7d' && item.recurringTx != null) {
+                                      await appState.snoozeRecurringTransaction(
+                                        item.recurringTx!,
+                                        item.recurringTx!.nextRecurringDate!.add(const Duration(days: 7)),
+                                      );
+                                    } else if (val == 'pause_rec' && item.recurringTx != null) {
+                                      await appState.updateTransaction(item.recurringTx!.copyWith(nextRecurringDate: null));
+                                    }
+                                  },
+                                  itemBuilder: (ctx) => isBill
+                                      ? [
+                                          const PopupMenuItem(
+                                            value: 'pay_bill',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.check_circle_outline, size: 18),
+                                                SizedBox(width: 8),
+                                                Text("Mark Paid"),
+                                              ],
+                                            ),
+                                          ),
+                                        ]
+                                      : [
+                                          const PopupMenuItem(
+                                            value: 'run_rec',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.play_arrow_rounded, size: 18),
+                                                SizedBox(width: 8),
+                                                Text("Run Now"),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'snooze_1d',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.snooze_rounded, size: 18),
+                                                SizedBox(width: 8),
+                                                Text("Snooze 1 Day"),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'snooze_7d',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.event_repeat_rounded, size: 18),
+                                                SizedBox(width: 8),
+                                                Text("Snooze 1 Week"),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'pause_rec',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.pause_rounded, size: 18, color: AppTheme.warningColor),
+                                                SizedBox(width: 8),
+                                                Text("Pause"),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                ),
+                              ],
+                            ),
+                            const Spacer(),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "${isIncome ? '+' : '-'}${formatter.format(item.amount)}",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 15,
+                                    color: isIncome ? AppTheme.incomeColor : AppTheme.expenseColor,
+                                  ),
+                                ),
+                                Text(
+                                  dueText,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: dueColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (isBill)
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  minimumSize: const Size(double.infinity, 32),
+                                  textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                                onPressed: () {
+                                  showModalBottomSheet(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (context) => AddTransactionSheet(
+                                      prefilledTitle: item.bill!.title,
+                                      prefilledAmount: item.bill!.amount,
+                                      prefilledType: TransactionType.expense,
+                                      prefilledCategoryId: item.bill!.categoryId,
+                                      isTitleAndAmountLocked: true,
+                                      billToMarkAsPaid: item.bill,
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.check_circle_outline, size: 14),
+                                label: const Text("Mark Paid"),
+                              )
+                            else
                               Row(
                                 children: [
-                                  CircleAvatar(
-                                    radius: 12,
-                                    backgroundColor: Color(cat.colorValue).withAlpha((0.15 * 255).toInt()),
-                                    child: Icon(
-                                      categoryIcons[cat.iconKey] ?? Icons.more_horiz,
-                                      size: 12,
-                                      color: Color(cat.colorValue),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        minimumSize: const Size(0, 32),
+                                        side: const BorderSide(color: AppTheme.primary),
+                                      ),
+                                      onPressed: () {
+                                        showModalBottomSheet(
+                                          context: context,
+                                          isScrollControlled: true,
+                                          backgroundColor: Colors.transparent,
+                                          builder: (context) => AddTransactionSheet(
+                                            prefilledTitle: item.recurringTx!.title,
+                                            prefilledAmount: item.recurringTx!.amount,
+                                            prefilledType: item.recurringTx!.type,
+                                            prefilledCategoryId: item.recurringTx!.categoryId,
+                                            prefilledAccountId: item.recurringTx!.accountId,
+                                            prefilledBudgetId: item.recurringTx!.budgetId,
+                                            isTitleAndAmountLocked: true,
+                                          ),
+                                        );
+                                      },
+                                      icon: const Icon(Icons.play_arrow_rounded, size: 14),
+                                      label: const Text("Run Now", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      item.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  IconButton(
+                                    style: IconButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: const Size(32, 32),
                                     ),
+                                    icon: const Icon(Icons.snooze_rounded, size: 18),
+                                    tooltip: "Snooze 1 Day",
+                                    onPressed: () async {
+                                      await appState.snoozeRecurringTransaction(
+                                        item.recurringTx!,
+                                        item.recurringTx!.nextRecurringDate!.add(const Duration(days: 1)),
+                                      );
+                                    },
                                   ),
                                 ],
                               ),
-                              const Spacer(),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  formatter.format(item.amount),
-                                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                daysLeft <= 0 ? "Due today" : "Due in $daysLeft days",
-                                style: TextStyle(
-                                  color: daysLeft <= 0 ? AppTheme.expenseColor : theme.hintColor,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+                          ],
                         ),
                       );
                     },
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
               ],
 
               // Recent Transactions Header
@@ -770,7 +1181,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     );
                   },
                 ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 96),
             ],
           ),
         ),
@@ -951,10 +1362,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 context: context,
                                 isScrollControlled: true,
                                 backgroundColor: Colors.transparent,
-                                builder: (context) => AddTransferSheet(
+                                builder: (context) => AddTransactionSheet(
+                                  isTransferMode: true,
                                   prefilledAmount: item.amount,
-                                  prefilledFromAccountId: matchedAccount!.id,
-                                  prefilledToAccountId: matchedToAccount!.id,
+                                  prefilledAccountId: matchedAccount!.id,
                                   unrecognizedTxIdToDelete: item.id,
                                 ),
                               );
@@ -1868,30 +2279,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    if (banks.isEmpty)
-                      const Text(
-                        "No bank accounts found! Please add a bank account first.",
-                        style: TextStyle(color: AppTheme.expenseColor, fontSize: 13),
-                      )
-                    else
-                      DropdownButtonFormField<String>(
-                        value: selectedBankId,
-                        decoration: const InputDecoration(
-                          labelText: "Select Bank Account to Pay From",
-                          prefixIcon: Icon(Icons.account_balance),
-                        ),
-                        items: banks.map((b) {
-                          final balance = appState.getAccountBalance(b);
-                          return DropdownMenuItem(
-                            value: b.id,
-                            child: Text("${b.name} (${formatter.format(balance)})"),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          setState(() => selectedBankId = val);
-                        },
-                        validator: (val) => val == null ? "Bank account is required" : null,
-                      ),
+                    AccountSelectorField(
+                      label: "Pay From Account",
+                      selectedAccount: banks.any((b) => b.id == selectedBankId)
+                          ? banks.firstWhere((b) => b.id == selectedBankId)
+                          : (banks.isNotEmpty ? banks.first : null),
+                      availableAccounts: banks,
+                      appState: appState,
+                      onAccountSelected: (acc) {
+                        setState(() => selectedBankId = acc?.id);
+                      },
+                    ),
                     const SizedBox(height: 24),
                     ElevatedButton(
                       onPressed: banks.isEmpty
@@ -1931,6 +2329,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
     );
   }
+
+
+  Widget _buildSummaryGridTile(
+    String label,
+    String amount,
+    IconData icon,
+    Color color,
+    bool isDark,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                  ),
+                ),
+                Text(
+                  amount,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
 
   void _showAddTransactionSheet(BuildContext context) {

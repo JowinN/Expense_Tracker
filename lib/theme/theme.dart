@@ -54,17 +54,16 @@ class AppTheme {
         ),
         iconTheme: IconThemeData(color: darkTextPrimary),
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: darkSurface,
-        selectedItemColor: primary,
-        unselectedItemColor: darkTextSecondary,
-        elevation: 10,
-        type: BottomNavigationBarType.fixed,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: darkSurface.withAlpha((0.5 * 255).toInt()),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: Color(0xFF334155), width: 1.5),
@@ -81,15 +80,17 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: expenseColor, width: 1.5),
         ),
-        labelStyle: const TextStyle(color: darkTextSecondary),
-        hintStyle: const TextStyle(color: darkTextSecondary),
+        labelStyle: const TextStyle(color: darkTextSecondary, fontSize: 14),
+        hintStyle: const TextStyle(color: darkTextSecondary, fontSize: 14),
+        floatingLabelBehavior: FloatingLabelBehavior.auto,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
           foregroundColor: Colors.white,
           elevation: 2,
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          minimumSize: const Size.fromHeight(48),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -100,10 +101,54 @@ class AppTheme {
           ),
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primary,
+          minimumSize: const Size.fromHeight(48),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          side: const BorderSide(color: primary, width: 1.5),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: primary,
         foregroundColor: Colors.white,
         shape: CircleBorder(),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: darkSurface,
+        indicatorColor: primary.withOpacity(0.18),
+        elevation: 0,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        height: 65,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primary);
+          }
+          return const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: darkTextSecondary);
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: primary, size: 24);
+          }
+          return const IconThemeData(color: darkTextSecondary, size: 24);
+        }),
+      ),
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: darkSurface,
+        selectedItemColor: primary,
+        unselectedItemColor: darkTextSecondary,
+        type: BottomNavigationBarType.fixed,
+        elevation: 8,
+        selectedLabelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+        unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
       ),
     );
   }
@@ -140,17 +185,16 @@ class AppTheme {
         ),
         iconTheme: IconThemeData(color: lightTextPrimary),
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: lightSurface,
-        selectedItemColor: primary,
-        unselectedItemColor: lightTextSecondary,
-        elevation: 10,
-        type: BottomNavigationBarType.fixed,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
@@ -167,15 +211,17 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: expenseColor, width: 1.5),
         ),
-        labelStyle: const TextStyle(color: lightTextSecondary),
-        hintStyle: const TextStyle(color: lightTextSecondary),
+        labelStyle: const TextStyle(color: lightTextSecondary, fontSize: 14),
+        hintStyle: const TextStyle(color: lightTextSecondary, fontSize: 14),
+        floatingLabelBehavior: FloatingLabelBehavior.auto,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
           foregroundColor: Colors.white,
           elevation: 2,
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          minimumSize: const Size.fromHeight(48),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -186,10 +232,54 @@ class AppTheme {
           ),
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primary,
+          minimumSize: const Size.fromHeight(48),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          side: const BorderSide(color: primary, width: 1.5),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: primary,
         foregroundColor: Colors.white,
         shape: CircleBorder(),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: lightSurface,
+        indicatorColor: primary.withOpacity(0.12),
+        elevation: 0,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        height: 65,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primary);
+          }
+          return const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: lightTextSecondary);
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: primary, size: 24);
+          }
+          return const IconThemeData(color: lightTextSecondary, size: 24);
+        }),
+      ),
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: lightSurface,
+        selectedItemColor: primary,
+        unselectedItemColor: lightTextSecondary,
+        type: BottomNavigationBarType.fixed,
+        elevation: 8,
+        selectedLabelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+        unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
       ),
     );
   }

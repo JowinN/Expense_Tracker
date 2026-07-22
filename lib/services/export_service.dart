@@ -8,8 +8,8 @@ import '../models/models.dart';
 
 class ExportService {
   static final _dateFormatter = DateFormat('yyyy-MM-dd HH:mm');
-  static final _currencyFormatter = NumberFormat.currency(symbol: 'Rs. ', decimalDigits: 2);
-  static final _currencyFormatterCompact = NumberFormat.currency(symbol: 'Rs. ', decimalDigits: 0);
+  static final _currencyFormatter = NumberFormat.currency(symbol: '₹ ', decimalDigits: 2);
+  static final _currencyFormatterCompact = NumberFormat.currency(symbol: '₹ ', decimalDigits: 0);
 
   /// Generates a CSV file of transactions/transfers and opens the system Share sheet.
   static Future<void> exportToCsv({

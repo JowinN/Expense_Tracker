@@ -1,0 +1,80 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Default deny for unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Categories Collection
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    // Accounts Collection
+    match /accounts/{accountId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        !('creatorId' in request.resource.data) || request.resource.data.creatorId == request.auth.uid
+      );
+      allow update, delete: if isAuthenticated() && (
+        !('creatorId' in resource.data) || resource.data.creatorId == request.auth.uid
+      );
+    }
+
+    // Transactions Collection
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        !('creatorId' in request.resource.data) || request.resource.data.creatorId == request.auth.uid
+      );
+      allow update, delete: if isAuthenticated() && (
+        !('creatorId' in resource.data) || resource.data.creatorId == request.auth.uid
+      );
+    }
+
+    // Budgets Collection
+    match /budgets/{budgetId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        !('creatorId' in request.resource.data) || request.resource.data.creatorId == request.auth.uid
+      );
+      allow update, delete: if isAuthenticated() && (
+        !('creatorId' in resource.data) || resource.data.creatorId == request.auth.uid
+      );
+    }
+
+    // Bill Reminders Collection
+    match /bill_reminders/{billId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        !('creatorId' in request.resource.data) || request.resource.data.creatorId == request.auth.uid
+      );
+      allow update, delete: if isAuthenticated() && (
+        !('creatorId' in resource.data) || resource.data.creatorId == request.auth.uid
+      );
+    }
+
+    // Settings Collection
+    match /settings/{settingId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/database_service.dart';
@@ -16,13 +17,19 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   List<TransactionItem> _transactions = [];
   List<CategoryItem> _categories = [];
   List<AccountItem> _accounts = [];
+  List<BudgetItem> _budgets = [];
+  List<BillReminderItem> _billReminders = [];
+  NotificationSettings _notificationSettings = const NotificationSettings();
   List<UnrecognizedTransaction> _unrecognizedTransactions = [];
+  List<String> _savingsCategoryIds = [];
   ThemeMode _themeMode = ThemeMode.system;
   bool _isLoading = false;
   bool _isLoadingTransactions = false;
 
   StreamSubscription<AppUser?>? _authSubscription;
   StreamSubscription<List<TransactionItem>>? _transactionSubscription;
+  StreamSubscription<List<BudgetItem>>? _budgetSubscription;
+  StreamSubscription<List<BillReminderItem>>? _billSubscription;
 
   static const _channel = MethodChannel('com.family.spendwise/sms');
 
@@ -31,7 +38,73 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _initAuthStream();
     _initMethodChannel();
     _loadUnrecognizedTransactions();
+    _loadSavingsCategoryIds();
+    _loadNotificationSettings();
     Future.delayed(const Duration(seconds: 1), () => checkPendingTransaction());
+    Future.delayed(const Duration(seconds: 3), () => checkAllNotifications());
+  }
+
+  Future<void> showNotification(String title, String body) async {
+    try {
+      if (Platform.isAndroid) {
+        await _channel.invokeMethod('showLocalNotification', {
+          'title': title,
+          'body': body,
+        });
+      }
+    } catch (_) {}
+  }
+
+  void checkAllNotifications() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+
+    // 1. Recurring due soon (1 day before execution)
+    if (_notificationSettings.recurringDueSoon) {
+      for (var tx in _transactions) {
+        if (tx.isRecurring && tx.nextRecurringDate != null) {
+          final nextDate = tx.nextRecurringDate!;
+          final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
+          if (nextDay.isAtSameMomentAs(tomorrow)) {
+            showNotification(
+              "Upcoming Recurring Payment",
+              "${tx.title}: ₹${tx.amount.toStringAsFixed(2)} is due tomorrow (${DateFormat('dd MMM').format(nextDate)})",
+            );
+          }
+        }
+      }
+    }
+
+    // 2. Upcoming bill reminders (1 day before)
+    if (_notificationSettings.upcomingBill) {
+      for (var bill in _billReminders) {
+        if (!bill.isPaid) {
+          final dueDay = DateTime(bill.dueDate.year, bill.dueDate.month, bill.dueDate.day);
+          if (dueDay.isAtSameMomentAs(tomorrow)) {
+            showNotification(
+              "Upcoming Bill Reminder",
+              "${bill.title}: ₹${bill.amount.toStringAsFixed(2)} is due tomorrow (${DateFormat('dd MMM').format(bill.dueDate)})",
+            );
+          }
+        }
+      }
+    }
+
+    // 3. Bill Overdue Alerts
+    if (_notificationSettings.billOverdue) {
+      for (var bill in _billReminders) {
+        if (!bill.isPaid) {
+          final dueDay = DateTime(bill.dueDate.year, bill.dueDate.month, bill.dueDate.day);
+          if (dueDay.isBefore(today)) {
+            showNotification(
+              "Overdue Bill Alert",
+              "${bill.title}: ₹${bill.amount.toStringAsFixed(2)} was due on ${DateFormat('dd MMM').format(bill.dueDate)}",
+            );
+          }
+        }
+      }
+    }
   }
 
   @override
@@ -52,6 +125,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   List<TransactionItem> get transactions => _transactions;
   List<CategoryItem> get categories => _categories;
   List<AccountItem> get accounts => _accounts;
+  List<BudgetItem> get budgets => _budgets;
+  List<BillReminderItem> get billReminders => _billReminders;
+  NotificationSettings get notificationSettings => _notificationSettings;
   List<AccountItem> get myAccounts {
     if (_currentUser == null) return _accounts;
     return _accounts.where((acc) {
@@ -62,6 +138,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }).toList();
   }
   List<UnrecognizedTransaction> get unrecognizedTransactions => _unrecognizedTransactions;
+  List<String> get savingsCategoryIds => _savingsCategoryIds;
   ThemeMode get themeMode => _themeMode;
   bool get isLoading => _isLoading;
   bool get isLoadingTransactions => _isLoadingTransactions;
@@ -73,6 +150,39 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  Future<void> _loadSavingsCategoryIds() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/savings_categories.json');
+      if (await file.exists()) {
+        final contents = await file.readAsString();
+        final list = jsonDecode(contents) as List<dynamic>;
+        _savingsCategoryIds = list.cast<String>();
+      } else {
+        // Default fallback: auto-select any category matching investment/savings
+        _savingsCategoryIds = _categories
+            .where((c) =>
+                c.name.toLowerCase().contains('invest') ||
+                c.name.toLowerCase().contains('saving') ||
+                c.name.toLowerCase().contains('mutual') ||
+                c.name.toLowerCase().contains('stock'))
+            .map((c) => c.id)
+            .toList();
+      }
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> updateSavingsCategoryIds(List<String> ids) async {
+    _savingsCategoryIds = List.from(ids);
+    notifyListeners();
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/savings_categories.json');
+      await file.writeAsString(jsonEncode(_savingsCategoryIds));
+    } catch (_) {}
+  }
+
   void _initAuthStream() {
     _authSubscription?.cancel();
     _authSubscription = _authService.onAuthStateChanged.listen((user) {
@@ -82,10 +192,17 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         _loadCategories();
         _loadAccounts();
         _subscribeToTransactions();
+        _subscribeToBudgets();
+        _subscribeToBillReminders();
+        _loadNotificationSettings();
       } else {
         _unsubscribeTransactions();
+        _unsubscribeBudgets();
+        _unsubscribeBillReminders();
         _transactions = [];
         _accounts = [];
+        _budgets = [];
+        _billReminders = [];
         notifyListeners();
       }
     });
@@ -94,6 +211,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _loadCategories() async {
     try {
       _categories = await _databaseService.getCategories();
+      await _loadSavingsCategoryIds();
       notifyListeners();
     } catch (_) {}
   }
@@ -131,10 +249,140 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _transactionSubscription = null;
   }
 
+  void _subscribeToBudgets() {
+    _budgetSubscription?.cancel();
+    _budgetSubscription = _databaseService.streamBudgets().listen((list) {
+      _budgets = list;
+      notifyListeners();
+    });
+  }
+
+  void _unsubscribeBudgets() {
+    _budgetSubscription?.cancel();
+    _budgetSubscription = null;
+  }
+
+  void _subscribeToBillReminders() {
+    _billSubscription?.cancel();
+    _billSubscription = _databaseService.streamBillReminders().listen((list) {
+      _billReminders = list;
+      notifyListeners();
+    });
+  }
+
+  void _unsubscribeBillReminders() {
+    _billSubscription?.cancel();
+    _billSubscription = null;
+  }
+
+  Future<void> _loadNotificationSettings() async {
+    _notificationSettings = await _databaseService.getNotificationSettings();
+    notifyListeners();
+  }
+
+  Future<void> updateNotificationSettings(NotificationSettings settings) async {
+    _notificationSettings = settings;
+    notifyListeners();
+    await _databaseService.saveNotificationSettings(settings);
+  }
+
+  // Budget Actions
+  Future<void> addBudget(BudgetItem budget) async {
+    await _databaseService.addBudget(budget);
+  }
+
+  Future<void> updateBudget(BudgetItem budget) async {
+    await _databaseService.updateBudget(budget);
+  }
+
+  Future<void> deleteBudget(String id) async {
+    await _databaseService.deleteBudget(id);
+  }
+
+  // Calculate spent amount for a specific budget
+  double getBudgetSpent(BudgetItem budget) {
+    double spent = 0.0;
+    for (var tx in _transactions) {
+      if (tx.isTransfer) continue;
+      if (tx.type != TransactionType.expense) continue;
+      
+      // Check category match
+      if (budget.categoryIds.isNotEmpty && !budget.categoryIds.contains(tx.categoryId)) {
+        continue;
+      }
+      
+      // Check date within budget period
+      if (tx.date.isAfter(budget.startDate.subtract(const Duration(seconds: 1))) &&
+          tx.date.isBefore(budget.endDate.add(const Duration(seconds: 1)))) {
+        spent += tx.amount;
+      }
+    }
+    return spent;
+  }
+
+  // Bill Reminder Actions
+  Future<void> addBillReminder(BillReminderItem bill) async {
+    await _databaseService.addBillReminder(bill);
+  }
+
+  Future<void> updateBillReminder(BillReminderItem bill) async {
+    await _databaseService.updateBillReminder(bill);
+  }
+
+  Future<void> deleteBillReminder(String id) async {
+    await _databaseService.deleteBillReminder(id);
+  }
+
+  Future<void> markBillAsPaid(BillReminderItem bill) async {
+    if (_currentUser == null) return;
+    
+    // Create an expense transaction for this bill payment
+    final tx = TransactionItem(
+      id: 'tx_bill_${DateTime.now().microsecondsSinceEpoch}',
+      title: 'Bill: ${bill.title}',
+      amount: bill.amount,
+      date: DateTime.now(),
+      categoryId: bill.categoryId,
+      type: TransactionType.expense,
+      creatorId: _currentUser!.id,
+      creatorEmail: _currentUser!.email,
+      creatorName: _currentUser!.name,
+      accountId: bill.accountId.isNotEmpty ? bill.accountId : (myAccounts.isNotEmpty ? myAccounts.first.id : 'default_bank'),
+      notes: bill.notes,
+    );
+    await _databaseService.addTransaction(tx);
+
+    // Update bill status
+    if (bill.repeat != 'none') {
+      // Advance due date for next cycle
+      DateTime nextDue = bill.dueDate;
+      if (bill.repeat == 'weekly') {
+        nextDue = nextDue.add(const Duration(days: 7));
+      } else if (bill.repeat == 'yearly') {
+        nextDue = DateTime(nextDue.year + 1, nextDue.month, nextDue.day);
+      } else {
+        // monthly
+        int month = nextDue.month + 1;
+        int year = nextDue.year;
+        if (month > 12) {
+          month = 1;
+          year += 1;
+        }
+        nextDue = DateTime(year, month, nextDue.day);
+      }
+      final updated = bill.copyWith(dueDate: nextDue, isPaid: false);
+      await _databaseService.updateBillReminder(updated);
+    } else {
+      final updated = bill.copyWith(isPaid: true);
+      await _databaseService.updateBillReminder(updated);
+    }
+  }
+
   // Dynamic Account Balance Calculations
   double getAccountBalance(AccountItem account) {
     double balance = account.initialBalance;
     for (var tx in _transactions) {
+      if (tx.isRecurring) continue; // Recurring template rules do not alter account balance directly
       if (tx.isTransfer) {
         if (tx.accountId == account.id) {
           if (account.type == AccountType.creditCard) {
@@ -189,7 +437,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   double get totalIncome {
     double total = 0;
     for (var tx in _transactions) {
-      if (tx.isTransfer) continue;
+      if (tx.isTransfer || tx.isRecurring) continue;
       if (tx.type == TransactionType.income) {
         total += tx.amount;
       }
@@ -200,7 +448,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   double get totalExpense {
     double total = 0;
     for (var tx in _transactions) {
-      if (tx.isTransfer) continue;
+      if (tx.isTransfer || tx.isRecurring) continue;
       if (tx.type == TransactionType.expense) {
         total += tx.amount;
       }
@@ -219,11 +467,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     try {
       for (var transaction in list) {
         if (transaction.isRecurring && transaction.nextRecurringDate != null) {
+          if (transaction.recurringEndDate != null && transaction.nextRecurringDate!.isAfter(transaction.recurringEndDate!)) {
+            final updatedTemplate = transaction.copyWith(nextRecurringDate: null);
+            await _databaseService.updateTransaction(updatedTemplate);
+            continue;
+          }
           DateTime nextDate = transaction.nextRecurringDate!;
-          if (nextDate.isBefore(now)) {
+          final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+          if (nextDate.isBefore(todayEnd)) {
             List<TransactionItem> newInstances = [];
             
-            while (nextDate.isBefore(now)) {
+            while (nextDate.isBefore(todayEnd)) {
+              if (transaction.recurringEndDate != null && nextDate.isAfter(transaction.recurringEndDate!)) {
+                break;
+              }
+
               final String newId = 'recur_${transaction.id}_${nextDate.year}_${nextDate.month}_${nextDate.day}';
               
               final newInstance = TransactionItem(
@@ -247,10 +506,21 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
             for (var instance in newInstances) {
               await _databaseService.addTransaction(instance);
+              if (_notificationSettings.recurringExecuted) {
+                showNotification(
+                  "Recurring Payment Executed",
+                  "${instance.title}: ₹${instance.amount.toStringAsFixed(2)} was logged automatically.",
+                );
+              }
+            }
+
+            DateTime? finalNextDate = nextDate;
+            if (transaction.recurringEndDate != null && finalNextDate.isAfter(transaction.recurringEndDate!)) {
+              finalNextDate = null;
             }
 
             final updatedTemplate = transaction.copyWith(
-              nextRecurringDate: nextDate,
+              nextRecurringDate: finalNextDate,
             );
             await _databaseService.updateTransaction(updatedTemplate);
           }
@@ -387,13 +657,19 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     String accountId, {
     bool isRecurring = false,
     RecurrenceInterval recurrenceInterval = RecurrenceInterval.none,
+    DateTime? recurringEndDate,
     String? toAccountId,
+    String? notes,
+    String? budgetId,
   }) async {
     if (_currentUser == null) return;
 
     DateTime? nextRecDate;
     if (isRecurring && recurrenceInterval != RecurrenceInterval.none) {
-      nextRecDate = calculateNextRecurringDateFromAnchor(date, date, recurrenceInterval);
+      nextRecDate = date; // Recurrence begins on start date
+      if (recurringEndDate != null && nextRecDate.isAfter(recurringEndDate)) {
+        nextRecDate = null;
+      }
     }
 
     final newTransaction = TransactionItem(
@@ -409,8 +685,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       isRecurring: isRecurring,
       recurrenceInterval: recurrenceInterval,
       nextRecurringDate: nextRecDate,
+      recurringEndDate: recurringEndDate,
       accountId: accountId,
       toAccountId: toAccountId,
+      notes: notes,
+      budgetId: budgetId,
     );
 
     await _databaseService.addTransaction(newTransaction);

@@ -43,64 +43,153 @@ class SmsReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun processSms(context: Context, body: String) {
-        val isDebit = body.contains("debited", ignoreCase = true) ||
-                      body.contains("debit", ignoreCase = true) ||
-                      body.contains("spent", ignoreCase = true) ||
-                      body.contains("withdrawal", ignoreCase = true) ||
-                      body.contains("paid", ignoreCase = true) ||
-                      body.contains("txn of", ignoreCase = true) ||
-                      body.contains("purchase", ignoreCase = true) ||
-                      body.contains("auto-debit", ignoreCase = true) ||
-                      body.contains("auto pay", ignoreCase = true) ||
+    data class ParsedSms(
+        val type: String,
+        val amount: Double,
+        val accountLast4: String?,
+        val toAccountLast4: String?
+    )
+
+    fun parseSms(body: String): ParsedSms? {
+        val lowerBody = body.lowercase(Locale.ROOT)
+
+        // OTP & Promotional Spam Exclusions
+        val isOtp = lowerBody.contains("otp") ||
+                    lowerBody.contains("one time password") ||
+                    lowerBody.contains("code is") ||
+                    lowerBody.contains("verification code") ||
+                    lowerBody.contains("do not share") ||
+                    lowerBody.contains("secret code") ||
+                    lowerBody.contains("claim now") ||
+                    lowerBody.contains("apply for") ||
+                    lowerBody.contains("pre-approved")
+
+        if (isOtp) return null
+
+        // Debit keywords
+        val isDebit = lowerBody.contains("debited") ||
+                      lowerBody.contains("debit") ||
+                      lowerBody.contains("sent") ||
+                      lowerBody.contains("spent") ||
+                      lowerBody.contains("paid") ||
+                      lowerBody.contains("withdrawn") ||
+                      lowerBody.contains("withdrawal") ||
+                      lowerBody.contains("transferred") ||
+                      lowerBody.contains("deducted") ||
+                      lowerBody.contains("txn of") ||
+                      lowerBody.contains("purchase") ||
+                      lowerBody.contains("purchased") ||
+                      lowerBody.contains("auto-debit") ||
+                      lowerBody.contains("auto debit") ||
+                      lowerBody.contains("autopay") ||
+                      lowerBody.contains("swiped") ||
+                      lowerBody.contains("billed") ||
+                      lowerBody.contains("charged") ||
                       Regex("""(?<![a-z])dr\.?(?![a-z])""", RegexOption.IGNORE_CASE).containsMatchIn(body)
 
-        val isCredit = body.contains("credited", ignoreCase = true) ||
-                       body.contains("credit", ignoreCase = true) ||
-                       body.contains("received", ignoreCase = true) ||
-                       body.contains("salary", ignoreCase = true) ||
-                       body.contains("refund", ignoreCase = true) ||
+        // Credit keywords
+        val isCredit = lowerBody.contains("credited") ||
+                       lowerBody.contains("credit") ||
+                       lowerBody.contains("received") ||
+                       lowerBody.contains("deposited") ||
+                       lowerBody.contains("added") ||
+                       lowerBody.contains("refunded") ||
+                       lowerBody.contains("refund") ||
+                       lowerBody.contains("reimbursed") ||
+                       lowerBody.contains("cashback") ||
+                       lowerBody.contains("salary") ||
+                       lowerBody.contains("reversed") ||
                        Regex("""(?<![a-z])cr\.?(?![a-z])""", RegexOption.IGNORE_CASE).containsMatchIn(body)
 
-        val isOtp = body.contains("otp", ignoreCase = true) ||
-                    body.contains("one time password", ignoreCase = true) ||
-                    body.contains("code is", ignoreCase = true) ||
-                    body.contains("verification code", ignoreCase = true) ||
-                    body.contains("do not share", ignoreCase = true)
+        if (!isDebit && !isCredit) return null
 
-        if ((isDebit || isCredit) && !isOtp) {
-            // Debit takes priority over credit when both match (e.g. "debited from credited account")
-            val type = if (isDebit) "expense" else "income"
+        val type = if (isDebit) "expense" else "income"
 
-            // Extract amount: supports Rs/Rs./INR/₹ with or without space, commas, and decimals
-            val amountRegex = Regex("""(?:Rs\.?\s*|INR\s*|₹\s*)([\d,]+(?:\.\d{1,2})?)""", RegexOption.IGNORE_CASE)
-            val amountMatch = amountRegex.find(body)
-            val amountStr = amountMatch?.groups?.get(1)?.value?.replace(",", "")
-            val amount = amountStr?.toDoubleOrNull() ?: return
-            if (amount <= 0) return
+        // Amount extraction: find currency amount matches (Rs/INR/₹/$), ignoring numbers preceded by Bal/Balance/Avbl/Limit
+        val amountRegex = Regex(
+            """(?:Rs\.?|INR\.?|₹|\$)\s*([\d,]+(?:\.\d{1,2})?)""",
+            RegexOption.IGNORE_CASE
+        )
+        val allAmountMatches = amountRegex.findAll(body).toList()
 
-            // Extract last-4 account/card digits
-            // Strategy: find all standalone 4-digit numbers near account keywords
-            val accRegex = Regex(
-                """(?:A/c(?:\s*no\.?)?|Acct|account|card|ending(?:\s*in)?|credited\s+to|debited\s+from)\s*\D{0,10}?(?<!\d)(\d{4})(?!\d)""",
-                RegexOption.IGNORE_CASE
-            )
-            val accMatches = accRegex.findAll(body).toList()
-            val amountDigits = amountStr?.replace(".", "")  // e.g. "8800" from "88.00"
-            val validAccs = accMatches
-                .mapNotNull { it.groups[1]?.value }
-                .filter { it != amountStr && it != amountDigits }
-                .distinct()
+        var amount: Double? = null
+        var amountStr: String? = null
 
-            val accountLast4 = validAccs.getOrNull(0)
-            val toAccountLast4 = validAccs.getOrNull(1)?.takeIf { it != accountLast4 }
+        for (match in allAmountMatches) {
+            val fullMatchRange = match.range
+            val prefix = body.substring(0, fullMatchRange.first).lowercase(Locale.ROOT)
+            val shortPrefix = if (prefix.length > 25) prefix.substring(prefix.length - 25) else prefix
+            val isBalanceAmount = shortPrefix.contains("bal") ||
+                                  shortPrefix.contains("balance") ||
+                                  shortPrefix.contains("lmt") ||
+                                  shortPrefix.contains("limit")
 
-            val txId = UUID.randomUUID().toString()
-            val dateStr = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US).format(Date())
-
-            saveUnrecognizedTransaction(context, txId, amount, accountLast4, toAccountLast4, type, body, dateStr)
-            showNotification(context, txId, amount, accountLast4, toAccountLast4, type, body, dateStr)
+            if (!isBalanceAmount) {
+                val candidateStr = match.groups[1]?.value?.replace(",", "")
+                val candidateVal = candidateStr?.toDoubleOrNull()
+                if (candidateVal != null && candidateVal > 0) {
+                    amount = candidateVal
+                    amountStr = candidateStr
+                    break
+                }
+            }
         }
+
+        if (amount == null && allAmountMatches.isNotEmpty()) {
+            val candidateStr = allAmountMatches.first().groups[1]?.value?.replace(",", "")
+            amount = candidateStr?.toDoubleOrNull()
+            amountStr = candidateStr
+        }
+
+        if (amount == null || amount <= 0) return null
+
+        val amountDigits = amountStr?.replace(".", "") ?: ""
+
+        // Account extraction: match account/card keywords followed by digits or masked digits (xx0764, X6971, *1234, ...1234, 1234)
+        val accRegex = Regex(
+            """(?:A/c|Acct|Account|Card|Ending|VPA|Wallet|UPI|from|to)\s*(?:no\.?|num|number)?\s*[\D]{0,10}?([xX\*N\.]*\d{4})\b""",
+            RegexOption.IGNORE_CASE
+        )
+        val accMatches = accRegex.findAll(body).toList()
+
+        val validAccs = mutableListOf<String>()
+        for (m in accMatches) {
+            val rawCaptured = m.groups[1]?.value ?: continue
+            val digitsOnly = rawCaptured.filter { it.isDigit() }
+            if (digitsOnly.length >= 4) {
+                val last4 = digitsOnly.takeLast(4)
+                if (last4 != amountStr && last4 != amountDigits && !validAccs.contains(last4)) {
+                    validAccs.add(last4)
+                }
+            }
+        }
+
+        // Fallback account: search for standalone masked digits like xx0764 or X6971 anywhere in body
+        if (validAccs.isEmpty()) {
+            val standaloneMaskRegex = Regex("""(?<!\d)[xX\*]{1,6}(\d{4})\b""")
+            val maskedMatches = standaloneMaskRegex.findAll(body).toList()
+            for (m in maskedMatches) {
+                val last4 = m.groups[1]?.value ?: continue
+                if (last4 != amountStr && last4 != amountDigits && !validAccs.contains(last4)) {
+                    validAccs.add(last4)
+                }
+            }
+        }
+
+        val accountLast4 = validAccs.getOrNull(0)
+        val toAccountLast4 = validAccs.getOrNull(1)?.takeIf { it != accountLast4 }
+
+        return ParsedSms(type, amount, accountLast4, toAccountLast4)
+    }
+
+    private fun processSms(context: Context, body: String) {
+        val parsed = parseSms(body) ?: return
+
+        val txId = UUID.randomUUID().toString()
+        val dateStr = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US).format(Date())
+
+        saveUnrecognizedTransaction(context, txId, parsed.amount, parsed.accountLast4, parsed.toAccountLast4, parsed.type, body, dateStr)
+        showNotification(context, txId, parsed.amount, parsed.accountLast4, parsed.toAccountLast4, parsed.type, body, dateStr)
     }
 
     private fun saveUnrecognizedTransaction(
