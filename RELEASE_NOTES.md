@@ -2,61 +2,60 @@
 
 ---
 
-## v1.1.0 — SMS Transaction Reliability Fix
+## v2.0.0 — Major Feature Release: Recurring Engine, 3-Day Upcoming Due Carousel, Net Worth Timeframe Selector & System Notifications
 
-> **Build**: `1.1.0+2` · **Released**: July 2026
+> **Build**: `2.0.0+3` · **Released**: July 2026
 
-### 🐛 Bug Fixes
+SpendWise v2.0.0 is a major update introducing an automated Recurring Transactions engine, a unified 3-day Upcoming Due dashboard carousel, embedded timeframe controls in the Net Worth card, native Android system notifications, and production Firestore security rules.
 
-#### SMS-Detected Transactions Not Appearing After Dismissing Notification
-Previously, if a bank SMS was received and the user **dismissed or ignored the notification** (instead of tapping it), the detected transaction would silently disappear — it would never show up as a pending unrecognized transaction in the Dashboard.
+### 🚀 New Features & Enhancements
 
-Two root causes were identified and fixed:
+#### 🔄 Advanced Recurring Transactions Engine
+- **Automated Scheduling**: Create recurring expense and income transaction rules with Daily, Weekly, Monthly, or Yearly frequencies.
+- **Future Start Date Schedule Enforcement**: Setting a future start date schedules the recurrence without deducting funds today. Template rules (`isRecurring: true`) are isolated from immediate account balance subtractions.
+- **Optional End Date**: Set optional end dates (`recurringEndDate`) with automatic pause/stop when the end date is reached.
+- **Redesigned Compact Cards**: Sleek, compact card UI with **Run Now**, **Pause/Resume**, and **Delete** quick action buttons.
 
-- **File path mismatch** (`SmsReceiver.kt`): The Android SMS receiver was saving detected transactions to `files/unrecognized_transactions.json`, while Flutter's `getApplicationDocumentsDirectory()` points to `app_flutter/unrecognized_transactions.json`. They were different directories, so Flutter never found the file. The receiver now writes to the correct `app_flutter/` directory, with automatic one-time migration of any previously saved data from the old path.
+#### 📌 Unified 3-Day "Upcoming Due" Dashboard Carousel
+- **Combined Carousel**: Merges unpaid **Bill Reminders** and active **Recurring Transactions** due in the next 3 days into a single horizontal carousel.
+- **Badging & Labels**: Distinct `BILL` (amber) and `RECURRING` (primary) badges with due status indicators (`Due Today`, `Overdue by Xd`, `Due in X days`).
+- **Inline Actions**: Perform instant operations directly from the card (**Mark Paid**, **Run Now**, **Snooze 1 Day**, **Snooze 1 Week**, **Pause**).
 
-- **No app-resume refresh** (`app_state.dart`): Unrecognized transactions were only loaded from disk once at app startup. If the app was already running in the background when the SMS arrived and the user opened it without tapping the notification, the newly written file was never re-read. `AppState` now implements `WidgetsBindingObserver` and reloads pending transactions every time the app returns to the foreground (`AppLifecycleState.resumed`).
+#### 📊 Embedded Net Worth Timeframe Selector
+- **Glass Pill Dropdown**: Embedded a frosted glass timeframe dropdown pill (`PopupMenuButton`) directly inside the top-right of the **Net Worth Balance Card** on the Dashboard.
+- **Clean Navigation**: Supports switching preset time periods (`Today`, `This Week`, `This Month`, `Last Month`, `This Year`, `Custom`) cleanly without cluttering the app bar.
 
-### 📁 Files Changed
-- `android/app/src/main/kotlin/com/family/spendwise/SmsReceiver.kt`
-- `lib/providers/app_state.dart`
+#### 🔔 Native Android System Notifications & Control Center
+- **Upcoming Recurring Reminder**: Added a setting to receive high-priority Android system notifications **1 day before** a recurring transaction is scheduled to execute.
+- **Native System Dispatcher**: Implemented `showLocalNotification` in `MainActivity.kt` delivering system notifications with sound and vibration for bills, recurring executions, and budget alerts.
+- **Notification Settings Cleanup**: Removed test SMS parser UI for a clean, streamlined notification control center.
 
----
+#### 💰 Savings & Investment Category Selector
+- **Custom Expense Category Selector**: Select specific expense categories used for investments/savings in Settings, automatically calculating and displaying total savings on the Dashboard.
 
-## v1.0.0 — Initial Release
-
-We are excited to release **SpendWise v1.0.0**, a major release featuring core account management, interactive budgeting tools, financial statement exporters, and platform stability fixes.
-
-### 🔄 Internal Fund Transfers
-* **Safe Transfers Ledger**: Created a dedicated Transfers ledger screen to perform and log fund movements between bank accounts and credit cards.
-* **Double-Count Prevention**: Transfers are completely excluded from dashboard graphs and standard income/expense statistics to preserve transaction accuracy.
-* **Credit Card Headroom check**: In the transfer sheet, credit card entries dynamically calculate and display your available credit limit (`limit - utilized`) rather than the utilized balance.
-
-### 💳 Drag-and-Drop Account Reordering
-* **Custom Priority Order**: Added a drag handle to accounts and credit cards in the Settings tab, allowing you to prioritize the order of your assets.
-* **Real-time Synchronization**: Reordering is saved dynamically back to Cloud Firestore and instantly updates the horizontal cards list on the Dashboard.
-
-### 📂 Financial Exporters (PDF & Excel/CSV)
-* **Custom PDF Report**: Generates a professional statement detailing net worth, total income/expense cards, account balance summaries, and chronological transaction tables matching the SpendWise color scheme.
-* **Excel-Compatible CSV**: Outputs tabular transactions data ready to load in Microsoft Excel, Google Sheets, or Apple Numbers.
-* **Native System Sharing**: Exports integrate with your device's native share sheet, allowing you to save to files, email, or send statements immediately.
-
-### 🎨 UI Polish & Layout Safeguards
-* **Text Ellipsis**: Applied `maxLines: 1` and `TextOverflow.ellipsis` on transaction titles, creator tags, and profile metadata.
-* **Dynamic Amount Scaling**: Wrapped balances, limits, and income/expense values inside `FittedBox` to scale font size down dynamically on narrow screens or under huge balance figures.
-* **Dropdown Layout Fixes**: Expanded custom dropdown option layouts to prevent screen overflow.
-
-### ⚙️ Android Build Configuration (SDK 35)
-* **API Level 35 Support**: Upgraded `compileSdk` and `targetSdk` configuration to version `35` inside the application Gradle settings.
-* **Subproject Override Hook**: Implemented a dynamic reflection and lifecycle state check inside the root build script. This ensures all plugins (such as `share_plus`) are successfully configured for SDK 35 at compile time.
+#### 🔒 Production Cloud Firestore Security Rules
+- **Production Rules (`firestore.rules`)**: Enforces strict user authentication (`request.auth != null`), data validation, and owner-isolated document access for `users`, `categories`, `accounts`, `transactions`, `budgets`, `bill_reminders`, and `settings`.
 
 ---
 
 ## Technical Details
-| Field | v1.1.0 | v1.0.0 |
-|---|---|---|
-| Build Signature | `1.1.0+2` | `1.0.0+1` |
-| Target Platforms | Android, iOS, Web | Android, iOS, Web |
-| Database Backend | Firebase Cloud Firestore | Firebase Cloud Firestore |
-| Min Android SDK | 21 | 21 |
-| Target Android SDK | 35 | 35 |
+| Field | v2.0.0 | v1.1.0 | v1.0.0 |
+|---|---|---|---|
+| Build Signature | `2.0.0+3` | `1.1.0+2` | `1.0.0+1` |
+| Target Platforms | Android, iOS, Web | Android, iOS, Web | Android, iOS, Web |
+| Database Backend | Firebase Cloud Firestore | Firebase Cloud Firestore | Firebase Cloud Firestore |
+| Min Android SDK | 21 | 21 | 21 |
+| Target Android SDK | 35 | 35 | 35 |
+
+---
+
+## Previous Releases
+
+### v1.1.0 — SMS Transaction Reliability Fix
+> **Build**: `1.1.0+2` · **Released**: July 2026
+- Fixed SMS-detected transactions not appearing after notification dismissal.
+- Resolved file path mismatch in `SmsReceiver.kt` and added app-resume lifecycle refresh.
+
+### v1.0.0 — Initial Release
+> **Build**: `1.0.0+1` · **Released**: July 2026
+- Core account management, internal fund transfers, PDF & Excel financial statement exporters, and SDK 35 build configuration.
